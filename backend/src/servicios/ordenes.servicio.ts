@@ -35,6 +35,8 @@ export interface NuevaOrden {
   clienteId: number;
   vendedorId: number;
   fechaIngreso?: string | null;
+  medioMuestra?: 'WHATSAPP' | 'EMAIL' | null;
+  emailMuestra?: string | null;
   observaciones?: string | null;
   lineas: LineaOrden[];
 }
@@ -138,12 +140,14 @@ export async function crear(datos: NuevaOrden, creadoPor: number) {
     // El número de orden y la fecha de ingreso los pone el trigger si van en NULL.
     const [resultado] = await cx.query(
       `INSERT INTO ordenes (numero_orden, cliente_id, vendedor_id, fecha_ingreso,
-                            observaciones, creado_por)
-       VALUES (0, ?, ?, ?, ?, ?)`,
+                            medio_muestra, email_muestra, observaciones, creado_por)
+       VALUES (0, ?, ?, ?, ?, ?, ?, ?)`,
       [
         datos.clienteId,
         datos.vendedorId,
         datos.fechaIngreso ?? null,
+        datos.medioMuestra ?? null,
+        datos.emailMuestra?.trim() || null,
         datos.observaciones ?? null,
         creadoPor,
       ]
@@ -187,6 +191,7 @@ export async function obtener(id: number) {
   const [ordenes] = await pool.query(
     `SELECT o.id, o.numero_orden, o.fecha_ingreso, o.fecha_entrega, o.estado,
             o.observaciones, o.creado_en, o.finalizada_en,
+            o.medio_muestra, o.email_muestra,
             c.id AS cliente_id, c.cedula AS cliente_cedula, c.nombre AS cliente,
             c.nombre_comercial, c.telefono, c.telefono_wa, c.email_facturacion,
             o.vendedor_id, v.nombre_completo AS vendedor,
@@ -379,7 +384,56 @@ export async function dashboard(filtros: FiltrosDashboard) {
 
 // ---------------------------------------------------------------- Etapas
 
-export async function avanzarEtapa(lineaId: number, usuarioId: number, nota?: string) {
+export async function avanzarEtapa(
+  lineaId: number,
+  usuarioId: number,
+  nota?: string,
+  costureraId?: number | null
+) {
+  // Antes de avanzar, vemos cuál sería la siguiente etapa.
+  const [previo] = await pool.query(
+    `SELECT ol.tipo_trabajo_id, ol.archivo_sin_cambios, ol.secuencia_actual,
+            tt.codigo AS tipo_codigo,
+            (SELECT e.codigo
+               FROM flujo_etapas f
+               JOIN etapas e ON e.id = f.etapa_id
+              WHERE f.tipo_trabajo_id = ol.tipo_trabajo_id
+                AND f.secuencia > ol.secuencia_actual
+                AND NOT (ol.archivo_sin_cambios = 1 AND f.omitir_sin_cambios = 1)
+              ORDER BY f.secuencia LIMIT 1) AS siguiente_codigo,
+            (SELECT dt.costurera_id FROM detalle_textil dt WHERE dt.linea_id = ol.id) AS costurera_actual
+       FROM orden_lineas ol
+       JOIN tipos_trabajo tt ON tt.id = ol.tipo_trabajo_id
+      WHERE ol.id = ?`,
+    [lineaId]
+  );
+  const info = (previo as any[])[0];
+  if (!info) throw new ErrorHttp(404, 'Línea de orden no encontrada');
+
+  // Un trabajo textil no entra a Confección sin costurera asignada.
+  const entraAConfeccion = info.tipo_codigo === 'TEXTIL' && info.siguiente_codigo === 'CONFECCION';
+  if (entraAConfeccion) {
+    const definitiva = costureraId ?? info.costurera_actual;
+    if (!definitiva) {
+      throw new ErrorHttp(
+        400,
+        'Debe indicar a qué costurera se envía el trabajo',
+        'COSTURERA_REQUERIDA'
+      );
+    }
+    const [existe] = await pool.query(
+      `SELECT id FROM costureras WHERE id = ? AND activo = 1`,
+      [definitiva]
+    );
+    if (!(existe as any[]).length) {
+      throw new ErrorHttp(400, 'La costurera indicada no existe o está inactiva');
+    }
+    await pool.query(`UPDATE detalle_textil SET costurera_id = ? WHERE linea_id = ?`, [
+      definitiva,
+      lineaId,
+    ]);
+  }
+
   try {
     await pool.query(`CALL sp_avanzar_etapa(?, ?, ?)`, [lineaId, usuarioId, nota ?? null]);
   } catch (error: any) {

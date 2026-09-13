@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import * as ordenes from '../servicios/ordenes.servicio.js';
+import * as costureras from '../servicios/costureras.servicio.js';
 import {
   autenticar,
   exigirPasswordDefinitiva,
@@ -62,11 +63,67 @@ const esquemaOrden = z.object({
   clienteId: z.number().int().positive('Debe seleccionar un cliente'),
   vendedorId: z.number().int().positive('Debe seleccionar un vendedor'),
   fechaIngreso: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().nullable(),
+  medioMuestra: z.enum(['WHATSAPP', 'EMAIL']).optional().nullable(),
+  emailMuestra: z
+    .string()
+    .email('El correo de la muestra no es válido')
+    .optional()
+    .nullable()
+    .or(z.literal('')),
   observaciones: z.string().trim().optional().nullable(),
   lineas: z.array(esquemaLinea).min(1, 'Agregue al menos un tipo de trabajo'),
 });
 
-// ---------------------------------------------------------------- Rutas
+const esquemaCosturera = z.object({
+  nombre: z.string().trim().min(3, 'El nombre es obligatorio'),
+  telefono: z.string().trim().optional().nullable(),
+  notas: z.string().trim().optional().nullable(),
+});
+
+// ---------------------------------------------------------------- Costureras
+// Van primero para que ninguna ruta con parámetro las capture.
+
+rutasOrdenes.get('/costureras', async (req, res, next) => {
+  try {
+    res.json(await costureras.listar(req.query.todas !== 'true'));
+  } catch (error) {
+    next(error);
+  }
+});
+
+rutasOrdenes.get('/costureras/carga', async (_req, res, next) => {
+  try {
+    res.json(await costureras.cargaDeTrabajo());
+  } catch (error) {
+    next(error);
+  }
+});
+
+rutasOrdenes.post('/costureras', requierePermiso('costureras.gestionar'), async (req, res, next) => {
+  try {
+    res.status(201).json(await costureras.crear(esquemaCosturera.parse(req.body)));
+  } catch (error) {
+    next(error);
+  }
+});
+
+rutasOrdenes.patch(
+  '/costureras/:id',
+  requierePermiso('costureras.gestionar'),
+  async (req, res, next) => {
+    try {
+      const datos = esquemaCosturera
+        .partial()
+        .extend({ activo: z.boolean().optional() })
+        .parse(req.body);
+      res.json(await costureras.actualizar(Number(req.params.id), datos));
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// ---------------------------------------------------------------- Órdenes
 
 rutasOrdenes.get('/ordenes', async (req, res, next) => {
   try {
@@ -85,6 +142,7 @@ rutasOrdenes.get('/ordenes', async (req, res, next) => {
   }
 });
 
+// Esta va antes de '/ordenes/:id' para que 'numero' no se tome como un id.
 rutasOrdenes.get('/ordenes/numero/:numero', async (req, res, next) => {
   try {
     res.json(await ordenes.porNumero(Number(req.params.numero)));
@@ -110,13 +168,27 @@ rutasOrdenes.post('/ordenes', requierePermiso('ordenes.crear'), async (req, res,
   }
 });
 
+// ---------------------------------------------------------------- Líneas
+
 rutasOrdenes.post(
   '/lineas/:id/avanzar',
   requierePermiso('etapas.avanzar'),
   async (req, res, next) => {
     try {
-      const { nota } = z.object({ nota: z.string().trim().optional() }).parse(req.body ?? {});
-      res.json(await ordenes.avanzarEtapa(Number(req.params.id), req.usuario!.id, nota));
+      const datos = z
+        .object({
+          nota: z.string().trim().optional(),
+          costureraId: z.number().int().positive().optional().nullable(),
+        })
+        .parse(req.body ?? {});
+      res.json(
+        await ordenes.avanzarEtapa(
+          Number(req.params.id),
+          req.usuario!.id,
+          datos.nota,
+          datos.costureraId
+        )
+      );
     } catch (error) {
       next(error);
     }

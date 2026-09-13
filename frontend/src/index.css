@@ -1,111 +1,197 @@
-:root {
-  --text: #6b6375;
-  --text-h: #08060d;
-  --bg: #fff;
-  --border: #e5e4e7;
-  --code-bg: #f4f3ec;
-  --accent: #aa3bff;
-  --accent-bg: rgba(170, 59, 255, 0.1);
-  --accent-border: rgba(170, 59, 255, 0.5);
-  --social-bg: rgba(244, 243, 236, 0.5);
-  --shadow:
-    rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
+@import 'tailwindcss';
 
-  --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --mono: ui-monospace, Consolas, monospace;
+@theme {
+  --color-marca-50:  #eef4ff;
+  --color-marca-100: #d9e5ff;
+  --color-marca-200: #bcd2ff;
+  --color-marca-300: #8eb5ff;
+  --color-marca-400: #598cff;
+  --color-marca-500: #3563fb;
+  --color-marca-600: #1f42f0;
+  --color-marca-700: #1a33dc;
+  --color-marca-800: #1c2db2;
+  --color-marca-900: #1c2e8c;
 
-  font: 18px/145% var(--sans);
-  letter-spacing: 0.18px;
-  color-scheme: light dark;
-  color: var(--text);
-  background: var(--bg);
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+}
 
-  @media (max-width: 1024px) {
-    font-size: 16px;
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+  }
+  body {
+    @apply bg-slate-50 text-slate-800;
   }
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --text: #9ca3af;
-    --text-h: #f3f4f6;
-    --bg: #16171d;
-    --border: #2e303a;
-    --code-bg: #1f2028;
-    --accent: #c084fc;
-    --accent-bg: rgba(192, 132, 252, 0.15);
-    --accent-border: rgba(192, 132, 252, 0.5);
-    --social-bg: rgba(47, 48, 58, 0.5);
-    --shadow:
-      rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
+/* Transiciones cortas: se sienten vivas sin costar rendimiento. */
+@layer components {
+  .boton {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5
+           text-sm font-medium transition-all duration-150
+           active:scale-[0.97] disabled:opacity-50 disabled:pointer-events-none;
   }
-
-  #social .button-icon {
-    filter: invert(1) brightness(2);
+  .boton-primario {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5
+           text-sm font-medium transition-all duration-150
+           active:scale-[0.97] disabled:opacity-50 disabled:pointer-events-none
+           bg-marca-600 text-white shadow-sm
+           hover:bg-marca-700 hover:shadow-md
+           focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-marca-600;
+  }
+  .boton-secundario {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5
+           text-sm font-medium transition-all duration-150
+           active:scale-[0.97] disabled:opacity-50 disabled:pointer-events-none
+           bg-white text-slate-700 ring-1 ring-slate-300
+           hover:bg-slate-50 hover:ring-slate-400;
+  }
+  .boton-peligro {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5
+           text-sm font-medium transition-all duration-150
+           active:scale-[0.97] disabled:opacity-50 disabled:pointer-events-none
+           bg-red-600 text-white shadow-sm hover:bg-red-700 hover:shadow-md;
+  }
+  .campo {
+    @apply w-full rounded-lg border-0 bg-white px-3 py-2.5 text-sm text-slate-900
+           ring-1 ring-inset ring-slate-300 transition-shadow duration-150
+           placeholder:text-slate-400
+           focus:ring-2 focus:ring-inset focus:ring-marca-600 focus:outline-none;
+  }
+  .etiqueta {
+    @apply block text-sm font-medium text-slate-700 mb-1.5;
+  }
+  .tarjeta {
+    @apply rounded-xl bg-white p-5 shadow-sm ring-1 ring-slate-200;
   }
 }
 
-#root {
-  width: 1126px;
-  max-width: 100%;
+/* ===================== Orden impresa (carta horizontal) ===================== */
+@page {
+  size: letter landscape;
+  margin: 10mm;
+}
+
+.hoja {
+  width: 261mm;
   margin: 0 auto;
-  text-align: center;
-  border-inline: 1px solid var(--border);
-  min-height: 100svh;
+  padding: 6mm 8mm;
+  background: white;
+  color: #000;
+  font-size: 9.5pt;
+  line-height: 1.35;
+}
+
+.cabecera {
   display: flex;
-  flex-direction: column;
-  box-sizing: border-box;
+  align-items: flex-start;
+  justify-content: space-between;
+  border-bottom: 2pt solid #000;
+  padding-bottom: 3mm;
+  margin-bottom: 3mm;
+}
+.empresa { font-size: 16pt; font-weight: 700; letter-spacing: -0.3pt; }
+.tel { font-size: 8.5pt; color: #444; }
+.numero-caja {
+  display: flex; flex-direction: column; align-items: flex-end;
+  border: 1.5pt solid #000; border-radius: 2mm; padding: 1.5mm 4mm;
+}
+.numero-rotulo { font-size: 7.5pt; text-transform: uppercase; letter-spacing: 0.5pt; }
+.numero { font-size: 20pt; font-weight: 700; line-height: 1; }
+
+.bloque { display: flex; gap: 4mm; margin-bottom: 3mm; }
+.rejilla-4 {
+  flex: 1;
+  display: grid; grid-template-columns: repeat(4, 1fr);
+  gap: 1.5mm 3mm;
+}
+.dato { display: flex; flex-direction: column; min-width: 0; }
+.dato.ancho { grid-column: span 2; }
+.dato-rotulo {
+  font-size: 7pt; text-transform: uppercase; letter-spacing: 0.3pt; color: #555;
+}
+.dato-valor {
+  font-size: 9.5pt; font-weight: 600;
+  border-bottom: 0.4pt solid #bbb; padding-bottom: 0.5mm;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 
-body {
-  margin: 0;
+.fechas { display: flex; gap: 2mm; }
+.fecha-caja {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  border: 1pt solid #000; border-radius: 1.5mm; padding: 1.5mm 3mm; min-width: 26mm;
+}
+.fecha-caja.resaltada { background: #000; color: #fff; }
+.fecha-rotulo { font-size: 7pt; text-transform: uppercase; letter-spacing: 0.3pt; }
+.fecha-valor { font-size: 11pt; font-weight: 700; }
+
+.trabajos { display: flex; flex-direction: column; gap: 2mm; }
+.trabajo {
+  border: 0.8pt solid #333; border-radius: 1.5mm; padding: 2mm 3mm;
+  break-inside: avoid;
 }
 
-h1,
-h2 {
-  font-family: var(--heading);
-  font-weight: 500;
-  color: var(--text-h);
+.cabecera-marca { display: flex; align-items: center; gap: 4mm; }
+
+.logo-impreso { height: 16mm; width: auto; }
+
+.trabajo-cabecera {
+  display: flex; align-items: center; gap: 2.5mm;
+  border-bottom: 0.4pt solid #ccc; padding-bottom: 1.5mm; margin-bottom: 1.5mm;
+}
+.trabajo-indice {
+  display: grid; place-items: center;
+  width: 5mm; height: 5mm; border-radius: 50%;
+  background: #000; color: #fff; font-size: 8pt; font-weight: 700;
+}
+.trabajo-nombre { font-size: 11pt; font-weight: 700; }
+.trabajo-tipo {
+  border: 0.5pt solid #666; border-radius: 1mm; padding: 0.3mm 2mm;
+  font-size: 8pt; text-transform: uppercase; letter-spacing: 0.3pt;
+}
+.marca-sin-cambios {
+  background: #000; color: #fff; border-radius: 1mm; padding: 0.3mm 2mm; font-size: 7.5pt;
+}
+.trabajo-entrega { margin-left: auto; font-size: 8.5pt; font-weight: 600; }
+.trabajo-datos { display: grid; grid-template-columns: repeat(5, 1fr); gap: 1.5mm 3mm; }
+.observaciones { margin-top: 1.5mm; font-size: 8.5pt; }
+.observaciones-orden { margin-top: 2mm; font-size: 8.5pt; }
+
+.firmas {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 8mm;
+  margin-top: 8mm; padding-top: 2mm;
+}
+.firma { border-top: 0.6pt solid #000; padding-top: 1mm; text-align: center; }
+.firma span { font-size: 8pt; color: #444; }
+
+@media print {
+  .no-imprimir { display: none !important; }
+  body { background: white; }
+  .hoja { width: auto; margin: 0; padding: 0; }
 }
 
-h1 {
-  font-size: 56px;
-  letter-spacing: -1.68px;
-  margin: 32px 0;
-  @media (max-width: 1024px) {
-    font-size: 36px;
-    margin: 20px 0;
-  }
-}
-h2 {
-  font-size: 24px;
-  line-height: 118%;
-  letter-spacing: -0.24px;
-  margin: 0 0 8px;
-  @media (max-width: 1024px) {
-    font-size: 20px;
-  }
-}
-p {
-  margin: 0;
-}
+/* --------- Marca y envío de muestra en la hoja impresa --------- */
+.cabecera-marca { display: flex; align-items: center; gap: 4mm; }
+.logo-impreso { height: 16mm; width: auto; }
 
-code,
-.counter {
-  font-family: var(--mono);
-  display: inline-flex;
-  border-radius: 4px;
-  color: var(--text-h);
+.medio-muestra {
+  display: flex; align-items: center; gap: 6mm;
+  border: 0.6pt solid #666; border-radius: 1.5mm;
+  padding: 1.5mm 3mm; margin-bottom: 3mm;
+  font-size: 9pt;
 }
-
-code {
-  font-size: 15px;
-  line-height: 135%;
-  padding: 4px 8px;
-  background: var(--code-bg);
+.medio-rotulo { font-weight: 700; }
+.opcion { display: inline-flex; align-items: center; gap: 1.5mm; }
+.casilla {
+  position: relative; display: inline-block;
+  width: 3.5mm; height: 3.5mm; border: 0.9pt solid #000;
+}
+.casilla.marcada::after {
+  content: '✕'; position: absolute; inset: 0;
+  display: grid; place-items: center;
+  font-size: 8pt; font-weight: 700; line-height: 1;
+}
+.linea-correo {
+  display: inline-block; min-width: 55mm;
+  border-bottom: 0.5pt solid #000;
 }
