@@ -1,9 +1,20 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { LoaderCircle, X, Scissors } from 'lucide-react';
+import {
+  LoaderCircle, X, Scissors, PackageCheck, CircleSlash, MessageCircle, CircleCheck,
+} from 'lucide-react';
 import { api, mensajeDeError } from '../lib/api';
 import { iconoEtapa } from '../lib/iconos';
 import type { EtapaFlujo } from '../lib/tipos';
+
+interface AvisoWhatsapp {
+  id: number;
+  telefono: string;
+  mensaje: string;
+  numero_orden: number;
+  cliente: string;
+  enlace: string;
+}
 
 interface Props {
   lineaId: number;
@@ -11,33 +22,37 @@ interface Props {
   secuenciaActual: number;
   puedeAvanzar: boolean;
   compacto?: boolean;
-  /** Código del tipo de trabajo; con TEXTIL se pide costurera al confeccionar. */
+  /** Código del tipo de trabajo; con TEXTIL se pide costurera al sublimar. */
   tipoCodigo?: string;
-  /** Costurera ya asignada, si la hay. */
   costureraId?: number | null;
+  sinConfeccion?: boolean;
 }
 
 export default function BarraEtapas({
   lineaId, flujo, secuenciaActual, puedeAvanzar, compacto = false,
-  tipoCodigo, costureraId,
+  tipoCodigo, costureraId, sinConfeccion,
 }: Props) {
   const cliente = useQueryClient();
-  const [pidiendoCosturera, setPidiendoCosturera] = useState(false);
+  const [pidiendo, setPidiendo] = useState<'costurera' | 'nota' | null>(null);
+  const [avisoWa, setAvisoWa] = useState<AvisoWhatsapp | null>(null);
 
   const avanzar = useMutation({
-    mutationFn: (costurera?: number) =>
-      api.post(`/lineas/${lineaId}/avanzar`, costurera ? { costureraId: costurera } : {}),
-    onSuccess: () => {
-      setPidiendoCosturera(false);
+    mutationFn: (cuerpo: Record<string, unknown>) =>
+      api.post(`/lineas/${lineaId}/avanzar`, cuerpo),
+    onSuccess: ({ data }) => {
+      setPidiendo(null);
       cliente.invalidateQueries({ queryKey: ['ordenes'] });
       cliente.invalidateQueries({ queryKey: ['orden'] });
+      cliente.invalidateQueries({ queryKey: ['confeccion'] });
       cliente.invalidateQueries({ queryKey: ['notificaciones'] });
+      cliente.invalidateQueries({ queryKey: ['whatsapp'] });
+      // La orden quedó lista: hay que avisarle al cliente.
+      if (data?.whatsapp) setAvisoWa(data.whatsapp);
     },
     onError: (error: any) => {
-      if (error?.response?.data?.codigo === 'COSTURERA_REQUERIDA') {
-        setPidiendoCosturera(true);
-        return;
-      }
+      const codigo = error?.response?.data?.codigo;
+      if (codigo === 'COSTURERA_REQUERIDA') return setPidiendo('costurera');
+      if (codigo === 'NOTA_REQUERIDA') return setPidiendo('nota');
       alert(mensajeDeError(error));
     },
   });
@@ -46,12 +61,20 @@ export default function BarraEtapas({
   const siguiente = flujo.find((e) => e.secuencia > secuenciaActual);
 
   function alAvanzar() {
-    // Textil entrando a Confección sin costurera: se pide antes de mandar.
-    if (tipoCodigo === 'TEXTIL' && siguiente?.codigo === 'CONFECCION' && !costureraId) {
-      setPidiendoCosturera(true);
-      return;
+    // Textil entrando a Sublimación sin definir quién confecciona.
+    if (
+      tipoCodigo === 'TEXTIL' &&
+      siguiente?.codigo === 'SUBLIMACION' &&
+      !costureraId &&
+      !sinConfeccion
+    ) {
+      return setPidiendo('costurera');
     }
-    avanzar.mutate(undefined);
+    // La entrega siempre lleva observación.
+    if (siguiente?.codigo === 'ENTREGADO') {
+      return setPidiendo('nota');
+    }
+    avanzar.mutate({});
   }
 
   return (
@@ -118,14 +141,59 @@ export default function BarraEtapas({
         })}
       </div>
 
-      {pidiendoCosturera && (
+      {pidiendo === 'costurera' && (
         <ModalCosturera
           enviando={avanzar.isPending}
-          onCerrar={() => setPidiendoCosturera(false)}
-          onConfirmar={(id) => avanzar.mutate(id)}
+          onCerrar={() => setPidiendo(null)}
+          onConfirmar={(cuerpo) => avanzar.mutate(cuerpo)}
         />
       )}
+
+      {pidiendo === 'nota' && (
+        <ModalNotaEntrega
+          enviando={avanzar.isPending}
+          onCerrar={() => setPidiendo(null)}
+          onConfirmar={(nota) => avanzar.mutate({ nota })}
+        />
+      )}
+
+      {avisoWa && (
+        <ModalWhatsapp aviso={avisoWa} onCerrar={() => setAvisoWa(null)} />
+      )}
     </>
+  );
+}
+
+function Caja({
+  titulo, icono: Icono, onCerrar, cerrarAlTocarFuera = true, children,
+}: {
+  titulo: string;
+  icono: typeof Scissors;
+  onCerrar: () => void;
+  cerrarAlTocarFuera?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-slate-900/40 p-4"
+      onClick={cerrarAlTocarFuera ? onCerrar : undefined}
+    >
+      <div
+        className="w-full max-w-sm rounded-xl bg-white p-5 shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="flex items-center gap-2 font-semibold text-slate-900">
+            <Icono className="h-4 w-4 text-slate-400" />
+            {titulo}
+          </h2>
+          <button onClick={onCerrar} className="text-slate-400 hover:text-slate-600">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        {children}
+      </div>
+    </div>
   );
 }
 
@@ -134,78 +202,189 @@ function ModalCosturera({
 }: {
   enviando: boolean;
   onCerrar: () => void;
-  onConfirmar: (costureraId: number) => void;
+  onConfirmar: (cuerpo: Record<string, unknown>) => void;
 }) {
-  const [seleccionada, setSeleccionada] = useState<number | ''>('');
+  // '' = nada elegido, 'NA' = el cliente confecciona, número = costurera
+  const [eleccion, setEleccion] = useState<'' | 'NA' | number>('');
 
   const { data: costureras = [], isLoading } = useQuery({
     queryKey: ['costureras'],
     queryFn: async () => (await api.get<any[]>('/costureras')).data,
   });
 
+  function confirmar() {
+    if (eleccion === '') return;
+    if (eleccion === 'NA') return onConfirmar({ sinConfeccion: true });
+    onConfirmar({ costureraId: Number(eleccion) });
+  }
+
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-slate-900/40 p-4" onClick={onCerrar}>
-      <div className="w-full max-w-sm rounded-xl bg-white p-5 shadow-xl"
-        onClick={(e) => e.stopPropagation()}>
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="flex items-center gap-2 font-semibold text-slate-900">
-            <Scissors className="h-4 w-4 text-slate-400" />
-            Enviar a confección
-          </h2>
-          <button onClick={onCerrar} className="text-slate-400 hover:text-slate-600">
-            <X className="h-5 w-5" />
-          </button>
+    <Caja titulo="Entrega a confección" icono={Scissors} onCerrar={onCerrar} cerrarAlTocarFuera={false}>
+      <p className="mb-3 text-sm text-slate-500">
+        Indique a quién se le entrega el trabajo para confeccionar.
+      </p>
+
+      {isLoading ? (
+        <div className="grid place-items-center py-6">
+          <LoaderCircle className="h-5 w-5 animate-spin text-slate-400" />
         </div>
+      ) : (
+        <div className="space-y-1.5">
+          {costureras.map((c) => (
+            <button
+              key={c.id}
+              type="button"
+              onClick={() => setEleccion(c.id)}
+              className={`flex w-full items-center justify-between rounded-lg px-3 py-2.5
+                          text-left text-sm transition-all ${
+                            eleccion === c.id
+                              ? 'bg-marca-600 text-white shadow-sm'
+                              : 'bg-white text-slate-700 ring-1 ring-slate-300 hover:bg-slate-50'
+                          }`}
+            >
+              <span className="font-medium">{c.nombre}</span>
+              {c.telefono && (
+                <span className={eleccion === c.id ? 'text-xs text-marca-100' : 'text-xs text-slate-400'}>
+                  {c.telefono}
+                </span>
+              )}
+            </button>
+          ))}
 
-        <p className="mb-3 text-sm text-slate-500">
-          Indique a qué costurera se le entrega el trabajo.
-        </p>
-
-        {isLoading ? (
-          <div className="grid place-items-center py-6">
-            <LoaderCircle className="h-5 w-5 animate-spin text-slate-400" />
-          </div>
-        ) : costureras.length === 0 ? (
-          <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800 ring-1 ring-amber-200">
-            No hay costureras registradas. Pida a recepción o al administrador que agregue una.
-          </p>
-        ) : (
-          <div className="space-y-1.5">
-            {costureras.map((c) => (
-              <button
-                key={c.id}
-                type="button"
-                onClick={() => setSeleccionada(c.id)}
-                className={`flex w-full items-center justify-between rounded-lg px-3 py-2.5
-                            text-left text-sm transition-all ${
-                              seleccionada === c.id
-                                ? 'bg-marca-600 text-white shadow-sm'
-                                : 'bg-white text-slate-700 ring-1 ring-slate-300 hover:bg-slate-50'
-                            }`}
-              >
-                <span className="font-medium">{c.nombre}</span>
-                {c.telefono && (
-                  <span className={seleccionada === c.id ? 'text-marca-100 text-xs' : 'text-xs text-slate-400'}>
-                    {c.telefono}
-                  </span>
-                )}
-              </button>
-            ))}
-          </div>
-        )}
-
-        <div className="mt-4 flex gap-2">
+          {/* El cliente se lleva solo la tela */}
           <button
-            onClick={() => seleccionada && onConfirmar(Number(seleccionada))}
-            disabled={!seleccionada || enviando}
-            className="boton-primario flex-1"
+            type="button"
+            onClick={() => setEleccion('NA')}
+            className={`flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm
+                        transition-all ${
+                          eleccion === 'NA'
+                            ? 'bg-slate-900 text-white shadow-sm'
+                            : 'bg-white text-slate-700 ring-1 ring-dashed ring-slate-300 hover:bg-slate-50'
+                        }`}
           >
-            {enviando && <LoaderCircle className="h-4 w-4 animate-spin" />}
-            Confirmar y avanzar
+            <CircleSlash className="h-4 w-4 shrink-0" />
+            <span>
+              <span className="font-medium">N/A</span>
+              <span className={`ml-1.5 text-xs ${eleccion === 'NA' ? 'text-slate-300' : 'text-slate-400'}`}>
+                el cliente confecciona
+              </span>
+            </span>
           </button>
-          <button onClick={onCerrar} className="boton-secundario">Cancelar</button>
+
+          {costureras.length === 0 && (
+            <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 ring-1 ring-amber-200">
+              No hay costureras registradas. Pida a recepción que agregue una.
+            </p>
+          )}
         </div>
+      )}
+
+      <div className="mt-4 flex gap-2">
+        <button onClick={confirmar} disabled={eleccion === '' || enviando}
+          className="boton-primario flex-1">
+          {enviando && <LoaderCircle className="h-4 w-4 animate-spin" />}
+          Confirmar y avanzar
+        </button>
+        <button onClick={onCerrar} className="boton-secundario">Cancelar</button>
       </div>
-    </div>
+    </Caja>
+  );
+}
+
+function ModalNotaEntrega({
+  enviando, onCerrar, onConfirmar,
+}: {
+  enviando: boolean;
+  onCerrar: () => void;
+  onConfirmar: (nota: string) => void;
+}) {
+  const [nota, setNota] = useState('');
+
+  return (
+    <Caja titulo="Registrar entrega" icono={PackageCheck} onCerrar={onCerrar} cerrarAlTocarFuera={false}>
+      <p className="mb-3 text-sm text-slate-500">
+        Escriba una observación de la entrega: quién retiró, si quedó algo pendiente, etc.
+      </p>
+
+      <textarea
+        rows={3}
+        className="campo resize-none"
+        value={nota}
+        autoFocus
+        placeholder="Ej. Retirado por el cliente, conforme."
+        onChange={(e) => setNota(e.target.value)}
+      />
+
+      <div className="mt-4 flex gap-2">
+        <button onClick={() => onConfirmar(nota.trim())}
+          disabled={nota.trim().length < 3 || enviando}
+          className="boton-primario flex-1">
+          {enviando && <LoaderCircle className="h-4 w-4 animate-spin" />}
+          Marcar como entregado
+        </button>
+        <button onClick={onCerrar} className="boton-secundario">Cancelar</button>
+      </div>
+    </Caja>
+  );
+}
+
+/**
+ * Aparece al finalizar la orden. El enlace se abre con un clic del usuario,
+ * que es la única forma en que el navegador no bloquea la ventana nueva.
+ */
+function ModalWhatsapp({
+  aviso, onCerrar,
+}: {
+  aviso: AvisoWhatsapp;
+  onCerrar: () => void;
+}) {
+  const cliente = useQueryClient();
+  const [enviado, setEnviado] = useState(false);
+
+  const marcar = useMutation({
+    mutationFn: () => api.post(`/whatsapp/${aviso.id}/enviado`),
+    onSuccess: () => {
+      cliente.invalidateQueries({ queryKey: ['whatsapp'] });
+      onCerrar();
+    },
+  });
+
+  return (
+    <Caja titulo={`Orden #${aviso.numero_orden} lista`} icono={CircleCheck} onCerrar={onCerrar}
+      cerrarAlTocarFuera={false}>
+      <p className="mb-3 text-sm text-slate-500">
+        Avísele a <strong className="text-slate-700">{aviso.cliente}</strong> que puede retirar.
+      </p>
+
+      <p className="whitespace-pre-line rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600
+                    ring-1 ring-slate-200">
+        {aviso.mensaje}
+      </p>
+
+      <div className="mt-4 space-y-2">
+        <a
+          href={aviso.enlace}
+          target="_blank"
+          rel="noreferrer"
+          onClick={() => setEnviado(true)}
+          className="boton-primario w-full bg-emerald-600 hover:bg-emerald-700"
+        >
+          <MessageCircle className="h-4 w-4" />
+          Abrir WhatsApp
+        </a>
+
+        {enviado ? (
+          <button onClick={() => marcar.mutate()} disabled={marcar.isPending}
+            className="boton-secundario w-full">
+            {marcar.isPending && <LoaderCircle className="h-4 w-4 animate-spin" />}
+            Ya lo envié
+          </button>
+        ) : (
+          <button onClick={onCerrar} className="w-full py-2 text-xs text-slate-400 hover:text-slate-600">
+            Enviarlo después desde Notificaciones
+          </button>
+        )}
+      </div>
+    </Caja>
   );
 }

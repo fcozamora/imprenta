@@ -18,6 +18,7 @@ import Reportes from './paginas/Reportes';
 import Notificaciones from './paginas/Notificaciones';
 import Admin from './paginas/Admin';
 import Costureras from './paginas/Costureras';
+import ConfeccionTextil from './paginas/ConfeccionTextil';
 
 const cliente = new QueryClient({
   defaultOptions: {
@@ -56,6 +57,7 @@ export default function App() {
 
               <Route element={<Layout />}>
                 <Route path="/" element={<Ordenes />} />
+                <Route path="/confeccion" element={<ConfeccionTextil />} />
                 <Route path="/ordenes/nueva" element={<NuevaOrden />} />
                 <Route path="/ordenes/numero/:numero" element={<DetalleOrden />} />
                 <Route path="/ordenes/:id" element={<DetalleOrden />} />

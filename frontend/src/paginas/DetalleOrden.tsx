@@ -195,6 +195,7 @@ export default function DetalleOrden() {
               puedeAvanzar={puede('etapas.avanzar') && !linea.entregada}
               tipoCodigo={linea.tipo_codigo}
               costureraId={linea.detalle?.costurera_id ?? null}
+              sinConfeccion={linea.detalle?.sin_confeccion === 1}
             />
           </div>
 
@@ -243,6 +244,11 @@ export default function DetalleOrden() {
                       <span className="ml-1 text-slate-400">
                         · {formatoDuracion(h.minutos_en_etapa)}
                       </span>
+                    )}
+                    {h.nota && (
+                      <p className="mt-0.5 rounded bg-slate-50 px-2 py-1 text-slate-600">
+                        {h.nota}
+                      </p>
                     )}
                   </li>
                 ))}
@@ -334,7 +340,12 @@ function Especificaciones({ linea }: { linea: any }) {
       if (d) {
         filas.push(['Tela', d.tela]);
         if (d.perfil_impresion) filas.push(['Perfil de impresión', d.perfil_impresion]);
-        filas.push(['Costurera', d.costurera ?? 'Sin asignar']);
+        filas.push([
+          'Confección',
+          d.sin_confeccion === 1
+            ? 'N/A — el cliente confecciona'
+            : (d.costurera ?? 'Sin asignar'),
+        ]);
       }
       break;
     case 'SELLOS':

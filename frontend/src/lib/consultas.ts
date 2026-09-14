@@ -34,6 +34,7 @@ export interface FiltrosOrdenes {
   tipo?: number;
   porVencer?: boolean;
   sinTomar?: boolean;
+  mios?: boolean;
   finalizadas?: boolean;
   q?: string;
 }
@@ -47,6 +48,7 @@ export function useOrdenes(filtros: FiltrosOrdenes) {
       if (filtros.tipo) params.set('tipo', String(filtros.tipo));
       if (filtros.porVencer) params.set('porVencer', 'true');
       if (filtros.sinTomar) params.set('sinTomar', 'true');
+      if (filtros.mios) params.set('mios', 'true');
       if (filtros.finalizadas) params.set('finalizadas', 'true');
       if (filtros.q) params.set('q', filtros.q);
       return (await api.get<FilaDashboard[]>(`/ordenes?${params}`)).data;
@@ -54,8 +56,21 @@ export function useOrdenes(filtros: FiltrosOrdenes) {
   });
 }
 
-/** Construye el flujo de etapas de una fila usando los catálogos ya cargados,
- *  sin pedirlo al servidor por cada línea. */
+/** Trabajos textiles que están en manos de una costurera. */
+export function useConfeccion(costureraId?: number) {
+  return useQuery({
+    queryKey: ['confeccion', costureraId],
+    queryFn: async () => {
+      const p = costureraId ? `?costurera=${costureraId}` : '';
+      return (await api.get<FilaDashboard[]>(`/confeccion${p}`)).data;
+    },
+  });
+}
+
+/**
+ * Construye el flujo de etapas de una fila usando los catálogos ya cargados,
+ * sin pedirlo al servidor por cada línea.
+ */
 export function flujoDesdeCatalogos(
   catalogos: Catalogos | undefined,
   tipoTrabajoId: number,
@@ -69,6 +84,13 @@ export function flujoDesdeCatalogos(
     .sort((a, b) => a.secuencia - b.secuencia)
     .map((f) => {
       const e = porId.get(f.etapa_id)!;
-      return { secuencia: f.secuencia, id: e.id, codigo: e.codigo, nombre: e.nombre, icono: e.icono, color: e.color };
+      return {
+        secuencia: f.secuencia,
+        id: e.id,
+        codigo: e.codigo,
+        nombre: e.nombre,
+        icono: e.icono,
+        color: e.color,
+      };
     });
 }

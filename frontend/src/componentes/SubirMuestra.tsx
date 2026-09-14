@@ -1,6 +1,6 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ImagePlus, LoaderCircle, ImageOff } from 'lucide-react';
+import { ImagePlus, LoaderCircle, ImageOff, Expand } from 'lucide-react';
 import { api, mensajeDeError } from '../lib/api';
 import { fechaHora } from '../lib/formato';
 
@@ -10,6 +10,76 @@ interface Archivo {
   bytes: number;
   subido_en: string;
   subido_por: string;
+}
+
+/**
+ * Las imágenes están detrás del token, así que una etiqueta <img> normal
+ * no puede pedirlas: el navegador no manda el encabezado de autorización.
+ * Se descargan con el cliente de la API y se muestran desde memoria.
+ */
+function useImagenProtegida(id: number) {
+  const [url, setUrl] = useState<string | null>(null);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    let vigente = true;
+    let creada: string | null = null;
+
+    api
+      .get(`/archivos/${id}`, { responseType: 'blob' })
+      .then(({ data }) => {
+        if (!vigente) return;
+        creada = URL.createObjectURL(data as Blob);
+        setUrl(creada);
+      })
+      .catch(() => {
+        if (vigente) setError(true);
+      });
+
+    return () => {
+      vigente = false;
+      if (creada) URL.revokeObjectURL(creada);
+    };
+  }, [id]);
+
+  return { url, error };
+}
+
+function Imagen({
+  id, alt, className, onAmpliar,
+}: {
+  id: number;
+  alt: string;
+  className: string;
+  onAmpliar?: (url: string) => void;
+}) {
+  const { url, error } = useImagenProtegida(id);
+
+  if (error) {
+    return (
+      <div className={`${className} grid place-items-center bg-slate-100`}>
+        <ImageOff className="h-5 w-5 text-slate-300" />
+      </div>
+    );
+  }
+
+  if (!url) {
+    return (
+      <div className={`${className} grid place-items-center bg-slate-50`}>
+        <LoaderCircle className="h-5 w-5 animate-spin text-slate-300" />
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={url}
+      alt={alt}
+      className={className}
+      onClick={() => onAmpliar?.(url)}
+      loading="lazy"
+    />
+  );
 }
 
 interface Props {
@@ -22,10 +92,12 @@ export default function SubirMuestra({ lineaId, archivoSinCambios, puedeSubir }:
   const cliente = useQueryClient();
   const entrada = useRef<HTMLInputElement>(null);
   const [error, setError] = useState('');
+  const [ampliada, setAmpliada] = useState<string | null>(null);
 
   const { data: archivos = [], isLoading } = useQuery({
     queryKey: ['archivos', lineaId],
     queryFn: async () => (await api.get<Archivo[]>(`/lineas/${lineaId}/archivos`)).data,
+    enabled: !archivoSinCambios,
   });
 
   const subir = useMutation({
@@ -105,19 +177,18 @@ export default function SubirMuestra({ lineaId, archivoSinCambios, puedeSubir }:
         </p>
       ) : (
         <div className="space-y-2">
-          <a
-            href={`/api/archivos/${vigente.id}`}
-            target="_blank"
-            rel="noreferrer"
-            className="block overflow-hidden rounded-lg ring-1 ring-slate-200 transition-shadow hover:shadow-md"
-          >
-            <img
-              src={`/api/archivos/${vigente.id}`}
+          <div className="group relative overflow-hidden rounded-lg ring-1 ring-slate-200">
+            <Imagen
+              id={vigente.id}
               alt={vigente.nombre_archivo}
-              className="h-40 w-full bg-slate-50 object-contain"
-              loading="lazy"
+              className="h-40 w-full cursor-zoom-in bg-slate-50 object-contain"
+              onAmpliar={setAmpliada}
             />
-          </a>
+            <span className="pointer-events-none absolute right-2 top-2 rounded bg-slate-900/60 p-1
+                             opacity-0 transition-opacity group-hover:opacity-100">
+              <Expand className="h-3.5 w-3.5 text-white" />
+            </span>
+          </div>
           <p className="text-[11px] text-slate-500">
             {vigente.subido_por} · {fechaHora(vigente.subido_en)}
           </p>
@@ -129,25 +200,41 @@ export default function SubirMuestra({ lineaId, archivoSinCambios, puedeSubir }:
               </summary>
               <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
                 {anteriores.map((a) => (
-                  <a
+                  <div
                     key={a.id}
-                    href={`/api/archivos/${a.id}`}
-                    target="_blank"
-                    rel="noreferrer"
                     title={`${a.subido_por} · ${fechaHora(a.subido_en)}`}
-                    className="shrink-0 overflow-hidden rounded ring-1 ring-slate-200 transition-opacity hover:opacity-80"
+                    className="shrink-0 overflow-hidden rounded ring-1 ring-slate-200
+                               transition-opacity hover:opacity-80"
                   >
-                    <img
-                      src={`/api/archivos/${a.id}`}
+                    <Imagen
+                      id={a.id}
                       alt=""
-                      className="h-14 w-14 bg-slate-50 object-cover"
-                      loading="lazy"
+                      className="h-14 w-14 cursor-zoom-in bg-slate-50 object-cover"
+                      onAmpliar={setAmpliada}
                     />
-                  </a>
+                  </div>
                 ))}
               </div>
             </details>
           )}
+        </div>
+      )}
+
+      {/* Vista ampliada */}
+      {ampliada && (
+        <div
+          className="fixed inset-0 z-50 grid place-items-center bg-slate-900/80 p-6"
+          onClick={() => setAmpliada(null)}
+        >
+          <img
+            src={ampliada}
+            alt=""
+            className="max-h-full max-w-full rounded-lg object-contain shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          />
+          <p className="absolute bottom-4 text-xs text-white/70">
+            Haga clic fuera de la imagen para cerrar
+          </p>
         </div>
       )}
     </div>

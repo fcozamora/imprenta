@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { ClipboardList, LoaderCircle, Download } from 'lucide-react';
 import { api } from '../lib/api';
@@ -35,10 +36,10 @@ export default function Bitacora() {
   });
 
   function exportar() {
-    const cabecera = ['Fecha', 'Trabajador', 'Puesto', 'Orden', 'Cliente', 'Tipo', 'Trabajo', 'Etapa'];
+    const cabecera = ['Trabajador', 'Puesto', 'Orden', 'Cliente', 'Tipos', 'Trabajos', 'Etapas', 'Última vez'];
     const filas = registros.map((r) => [
-      fechaHora(r.marcada_en), r.trabajador, r.puesto, r.numero_orden,
-      r.cliente, r.tipo_trabajo, r.nombre_trabajo, r.etapa,
+      r.trabajador, r.puesto, r.numero_orden, r.cliente,
+      r.tipos_trabajo, r.trabajos, r.etapas_marcadas, fechaHora(r.ultima_vez),
     ]);
     const csv = [cabecera, ...filas]
       .map((f) => f.map((c) => `"${String(c ?? '').replace(/"/g, '""')}"`).join(','))
@@ -57,7 +58,9 @@ export default function Bitacora() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold text-slate-900">Bitácora de trabajo</h1>
-          <p className="mt-0.5 text-sm text-slate-500">{registros.length} registros</p>
+          <p className="mt-0.5 text-sm text-slate-500">
+            {registros.length} órdenes trabajadas · el detalle de etapas se ve dentro de cada orden
+          </p>
         </div>
         <button onClick={exportar} disabled={registros.length === 0} className="boton-secundario">
           <Download className="h-4 w-4" />
@@ -98,12 +101,11 @@ export default function Bitacora() {
             <p className="font-medium text-slate-900">{t.trabajador}</p>
             <p className="text-xs text-slate-500">{t.puesto}</p>
             <div className="mt-2 flex items-baseline gap-1">
-              <span className="text-2xl font-bold text-marca-700">{t.etapas_marcadas}</span>
-              <span className="text-xs text-slate-500">etapas · {t.ordenes} órdenes</span>
+              <span className="text-2xl font-bold text-marca-700">{t.ordenes}</span>
+              <span className="text-xs text-slate-500">
+                órdenes · {t.etapas_marcadas} etapas
+              </span>
             </div>
-            {t.horas_promedio != null && (
-              <p className="mt-0.5 text-xs text-slate-400">{t.horas_promedio} h en promedio</p>
-            )}
           </button>
         ))}
       </div>
@@ -123,33 +125,40 @@ export default function Bitacora() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  <th className="px-4 py-3">Fecha</th>
                   <th className="px-4 py-3">Trabajador</th>
                   <th className="px-4 py-3">Orden</th>
-                  <th className="px-4 py-3">Trabajo</th>
-                  <th className="px-4 py-3">Etapa</th>
+                  <th className="px-4 py-3">Trabajos</th>
+                  <th className="px-4 py-3 text-right">Etapas</th>
+                  <th className="px-4 py-3">Última vez</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {registros.map((r) => (
-                  <tr key={r.registro_id} className="hover:bg-slate-50/70">
-                    <td className="px-4 py-2.5 text-xs text-slate-500">{fechaHora(r.marcada_en)}</td>
+                {registros.map((r, i) => (
+                  <tr key={`${r.usuario_id}-${r.orden_id}-${i}`} className="hover:bg-slate-50/70">
                     <td className="px-4 py-2.5">
                       <p className="font-medium text-slate-900">{r.trabajador}</p>
                       <p className="text-xs text-slate-500">{r.puesto}</p>
                     </td>
                     <td className="px-4 py-2.5">
-                      <p className="font-semibold text-marca-700">#{r.numero_orden}</p>
+                      <Link
+                        to={`/ordenes/${r.orden_id}`}
+                        className="font-semibold text-marca-700 hover:underline"
+                      >
+                        #{r.numero_orden}
+                      </Link>
                       <p className="text-xs text-slate-500">{r.cliente}</p>
                     </td>
                     <td className="px-4 py-2.5">
-                      <p className="text-slate-800">{r.nombre_trabajo}</p>
-                      <p className="text-xs text-slate-500">{r.tipo_trabajo}</p>
+                      <p className="text-slate-800">{r.trabajos}</p>
+                      <p className="text-xs text-slate-500">{r.tipos_trabajo}</p>
                     </td>
-                    <td className="px-4 py-2.5">
-                      <span className="rounded bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700">
-                        {r.etapa}
+                    <td className="px-4 py-2.5 text-right">
+                      <span className="rounded bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700">
+                        {r.etapas_marcadas}
                       </span>
+                    </td>
+                    <td className="px-4 py-2.5 text-xs text-slate-500">
+                      {fechaHora(r.ultima_vez)}
                     </td>
                   </tr>
                 ))}

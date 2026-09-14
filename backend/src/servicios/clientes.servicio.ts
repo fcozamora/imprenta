@@ -36,25 +36,33 @@ export async function porCedula(cedula: string) {
 }
 
 /**
- * Búsqueda general por cédula, nombre, nombre comercial o teléfono.
- * Los resultados salen del más reciente al más antiguo según su última orden.
+ * Busca por cédula, nombre, nombre comercial o teléfono.
+ * Sin término devuelve los clientes con actividad más reciente.
  */
-export async function buscar(termino: string, limite = 20) {
-  const patron = `%${termino}%`;
+export async function buscar(termino: string, limite = 50) {
+  const valores: any[] = [];
+  let filtro = '';
+
+  if (termino) {
+    const patron = `%${termino}%`;
+    filtro = `AND (c.cedula LIKE ? OR c.nombre LIKE ?
+                   OR c.nombre_comercial LIKE ? OR c.telefono LIKE ?)`;
+    valores.push(patron, patron, patron, patron);
+  }
+  valores.push(limite);
+
   const [filas] = await pool.query(
     `SELECT c.id, c.cedula, c.nombre, c.nombre_comercial, c.telefono,
-            c.telefono_wa, c.email_facturacion,
+            c.telefono_wa, c.email_facturacion, c.creado_en,
             COUNT(o.id) AS total_ordenes,
             MAX(o.fecha_ingreso) AS ultima_orden
        FROM clientes c
        LEFT JOIN ordenes o ON o.cliente_id = c.id
-      WHERE c.activo = 1
-        AND (c.cedula LIKE ? OR c.nombre LIKE ?
-             OR c.nombre_comercial LIKE ? OR c.telefono LIKE ?)
+      WHERE c.activo = 1 ${filtro}
       GROUP BY c.id
-      ORDER BY ultima_orden DESC, c.nombre
+      ORDER BY COALESCE(MAX(o.fecha_ingreso), c.creado_en) DESC, c.nombre
       LIMIT ?`,
-    [patron, patron, patron, patron, limite]
+    valores
   );
   return filas;
 }
@@ -92,7 +100,8 @@ export async function ordenes(clienteId: number, limite = 50) {
   const [filas] = await pool.query(
     `SELECT o.id, o.numero_orden, o.fecha_ingreso, o.fecha_entrega, o.estado,
             u.nombre_completo AS vendedor,
-            GROUP_CONCAT(DISTINCT tt.nombre ORDER BY tt.nombre) AS tipos_trabajo,
+            GROUP_CONCAT(DISTINCT ol.nombre_trabajo ORDER BY ol.linea SEPARATOR ', ') AS trabajos,
+            GROUP_CONCAT(DISTINCT tt.nombre ORDER BY tt.nombre SEPARATOR ', ') AS tipos_trabajo,
             COUNT(ol.id) AS lineas
        FROM ordenes o
        JOIN usuarios u ON u.id = o.vendedor_id

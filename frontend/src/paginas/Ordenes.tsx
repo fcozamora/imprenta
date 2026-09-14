@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  AlarmClock, LoaderCircle, PackageOpen, MessageCircle, Hand, X,
+  AlarmClock, LoaderCircle, PackageOpen, MessageCircle, Hand, X, Scissors, UserCheck,
 } from 'lucide-react';
 import { useSesion } from '../lib/sesion';
 import { useOrdenes, useCatalogos, flujoDesdeCatalogos, type FiltrosOrdenes } from '../lib/consultas';
@@ -24,9 +24,18 @@ export default function Ordenes() {
 
   const busqueda = params.get('q') ?? undefined;
   const filtrosFinales = useMemo(() => ({ ...filtros, q: busqueda }), [filtros, busqueda]);
+  
 
   const { data: catalogos } = useCatalogos();
   const { data: filas = [], isLoading } = useOrdenes(filtrosFinales);
+
+  // El personal de imprenta solo trabaja estas categorías.
+  const TIPOS_PRODUCCION = ['TALONARIOS', 'IMPRESION_DIGITAL', 'HP_LATEX', 'SOBRES'];
+  const soloProduccion =
+    !puede('ordenes.ver_todas') && puede('ordenes.ver_produccion');
+  const tiposVisibles = (catalogos?.tiposTrabajo ?? []).filter(
+    (t) => !soloProduccion || TIPOS_PRODUCCION.includes(t.codigo)
+  );
 
   const tomar = useMutation({
     mutationFn: (lineaId: number) => api.post(`/lineas/${lineaId}/tomar`),
@@ -34,12 +43,22 @@ export default function Ordenes() {
     onError: (error) => alert(mensajeDeError(error)),
   });
 
+  /** "Sin tomar" y "Mis trabajos" son excluyentes entre sí. */
+  function alternarAsignacion(clave: 'sinTomar' | 'mios') {
+    setFiltros((f) => ({
+      ...f,
+      sinTomar: clave === 'sinTomar' ? !f.sinTomar : false,
+      mios: clave === 'mios' ? !f.mios : false,
+    }));
+  }
+
   function alternar(clave: keyof FiltrosOrdenes) {
     setFiltros((f) => ({ ...f, [clave]: !f[clave] }));
   }
 
   const hayFiltros =
-    filtros.vendedor || filtros.tipo || filtros.porVencer || filtros.sinTomar || filtros.finalizadas;
+    filtros.vendedor || filtros.tipo || filtros.porVencer ||
+    filtros.sinTomar || filtros.mios || filtros.finalizadas;
 
   return (
     <div className="space-y-4">
@@ -47,7 +66,7 @@ export default function Ordenes() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold text-slate-900">
-            {esDisenador ? 'Trabajos disponibles' : 'Órdenes en proceso'}
+            {esDisenador ? 'Trabajos de diseño' : 'Órdenes en proceso'}
           </h1>
           <p className="mt-0.5 text-sm text-slate-500">
             {isLoading ? 'Cargando...' : `${filas.length} trabajo${filas.length === 1 ? '' : 's'}`}
@@ -77,17 +96,30 @@ export default function Ordenes() {
         </button>
 
         {esDisenador && (
-          <button
-            onClick={() => alternar('sinTomar')}
-            className={`boton ${
-              filtros.sinTomar
-                ? 'bg-marca-600 text-white shadow-sm hover:bg-marca-700'
-                : 'bg-white text-slate-700 ring-1 ring-slate-300 hover:bg-slate-50'
-            }`}
-          >
-            <Hand className="h-4 w-4" />
-            Sin asignar
-          </button>
+          <>
+            <button
+              onClick={() => alternarAsignacion('sinTomar')}
+              className={`boton ${
+                filtros.sinTomar
+                  ? 'bg-marca-600 text-white shadow-sm hover:bg-marca-700'
+                  : 'bg-white text-slate-700 ring-1 ring-slate-300 hover:bg-slate-50'
+              }`}
+            >
+              <Hand className="h-4 w-4" />
+              Sin tomar
+            </button>
+            <button
+              onClick={() => alternarAsignacion('mios')}
+              className={`boton ${
+                filtros.mios
+                  ? 'bg-marca-600 text-white shadow-sm hover:bg-marca-700'
+                  : 'bg-white text-slate-700 ring-1 ring-slate-300 hover:bg-slate-50'
+              }`}
+            >
+              <UserCheck className="h-4 w-4" />
+              Mis trabajos
+            </button>
+          </>
         )}
 
         <select
@@ -111,7 +143,7 @@ export default function Ordenes() {
           className="campo w-auto py-2"
         >
           <option value="">Todos los tipos</option>
-          {catalogos?.tiposTrabajo.map((t) => (
+          {tiposVisibles.map((t) => (
             <option key={t.id} value={t.id}>{t.nombre}</option>
           ))}
         </select>
@@ -160,7 +192,7 @@ export default function Ordenes() {
                   <th className="px-4 py-3">Cliente</th>
                   <th className="px-4 py-3">Trabajo</th>
                   <th className="px-4 py-3">Etapa</th>
-                  {!esDisenador && <th className="px-4 py-3">Diseñador</th>}
+                  {!esDisenador && <th className="px-4 py-3">Asignado a</th>}
                   <th className="px-4 py-3">Ingreso</th>
                   <th className="px-4 py-3">Entrega</th>
                   {esDisenador && <th className="px-4 py-3"></th>}
@@ -174,10 +206,8 @@ export default function Ordenes() {
                   const aviso = avisoEntrega(f.dias_restantes);
                   const puedeAvanzar = puede('etapas.avanzar') && !f.finalizada;
                   const urlWhatsapp = enlaceWhatsapp(f.telefono_wa);
-                  const codigoTipo = catalogos?.tiposTrabajo.find(
-                    (t) => t.id === f.tipo_trabajo_id
-                  )?.codigo;
-                  
+                  const esTextil = f.tipo_codigo === 'TEXTIL';
+
                   return (
                     <tr
                       key={f.linea_id}
@@ -198,7 +228,7 @@ export default function Ordenes() {
                           </span>
                         )}
                       </td>
-                      
+
                       <td className="px-4 py-3 align-top">
                         <p className="font-medium text-slate-900">{f.cliente}</p>
                         <div className="mt-0.5 flex items-center gap-2">
@@ -222,7 +252,7 @@ export default function Ordenes() {
 
                       <td className="px-4 py-3 align-top">
                         <p className="text-slate-900">{f.nombre_trabajo}</p>
-                        <div className="mt-0.5 flex items-center gap-1.5">
+                        <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
                           <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-medium text-slate-600">
                             {f.tipo_trabajo}
                           </span>
@@ -240,15 +270,30 @@ export default function Ordenes() {
                           flujo={flujo}
                           secuenciaActual={f.secuencia_actual}
                           puedeAvanzar={puedeAvanzar}
-                          tipoCodigo={codigoTipo}
+                          tipoCodigo={f.tipo_codigo}
+                          costureraId={f.costurera_id}
+                          sinConfeccion={f.sin_confeccion === 1}
                           compacto
                         />
                         <p className="mt-1 text-xs font-medium text-slate-600">{f.etapa}</p>
                       </td>
 
                       {!esDisenador && (
-                        <td className="px-4 py-3 align-top text-slate-600">
-                          {f.disenador ?? <span className="text-slate-300">—</span>}
+                        <td className="px-4 py-3 align-top">
+                          <p className="text-slate-600">
+                            {f.disenador ?? <span className="text-slate-300">sin tomar</span>}
+                          </p>
+                          {/* La costurera solo aplica a los trabajos textiles */}
+                          {esTextil && (f.costurera || f.sin_confeccion === 1) && (
+                            <p className="mt-0.5 inline-flex items-center gap-1 text-xs">
+                              <Scissors className="h-3 w-3 shrink-0 text-slate-400" />
+                              {f.sin_confeccion === 1 ? (
+                                <span className="italic text-slate-400">sin confección</span>
+                              ) : (
+                                <span className="font-medium text-pink-700">{f.costurera}</span>
+                              )}
+                            </p>
+                          )}
                         </td>
                       )}
 

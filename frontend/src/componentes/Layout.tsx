@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import {
   Printer, LayoutDashboard, FilePlus2, Users, Stamp, Package,
-  ClipboardList, BarChart3, Settings, LogOut, Menu, X, Search, Bell, Scissors,
+  ClipboardList, BarChart3, Settings, LogOut, Menu, X, Search, Bell, Scissors,Shirt
 } from 'lucide-react';
 import { useSesion } from '../lib/sesion';
 import Campana from './Campana';
@@ -21,11 +21,12 @@ const MENU: ItemMenu[] = [
   { a: '/clientes', texto: 'Clientes', icono: Users, permisos: ['clientes.gestionar'] },
   { a: '/sellos', texto: 'Sellos', icono: Stamp, permisos: ['sellos.ver'] },
   { a: '/materiales', texto: 'Materiales', icono: Package, permisos: ['materiales.solicitar', 'materiales.atender'] },
-    { a: '/notificaciones', texto: 'Notificaciones', icono: Bell },
+  { a: '/notificaciones', texto: 'Notificaciones', icono: Bell },
   { a: '/bitacora', texto: 'Bitácora', icono: ClipboardList, permisos: ['bitacora.ver'] },
   { a: '/reportes', texto: 'Reportes', icono: BarChart3, permisos: ['reportes.generar'] },
   { a: '/admin', texto: 'Administración', icono: Settings, permisos: ['usuarios.gestionar'] },
   { a: '/costureras', texto: 'Costureras', icono: Scissors, permisos: ['costureras.gestionar'] },
+  { a: '/confeccion', texto: 'Confección textil', icono: Shirt, permisos: ['confeccion.ver'] },
 ];
 
 export default function Layout() {
@@ -33,6 +34,7 @@ export default function Layout() {
   const [menuAbierto, setMenuAbierto] = useState(false);
   const [busqueda, setBusqueda] = useState('');
   const navegar = useNavigate();
+  
 
   const visibles = MENU.filter((i) => !i.permisos || puede(...i.permisos));
 

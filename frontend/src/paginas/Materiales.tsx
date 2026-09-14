@@ -211,7 +211,7 @@ function ModalSolicitud({ onCerrar, onGuardado }: { onCerrar: () => void; onGuar
   const validas = lineas.filter((l) => l.producto.trim()).length;
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-slate-900/40 p-4" onClick={onCerrar}>
+    <div className="fixed inset-0 z-50 grid place-items-center bg-slate-900/40 p-4">
       <div className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-xl bg-white p-5 shadow-xl"
         onClick={(e) => e.stopPropagation()}>
         <div className="mb-4 flex items-center justify-between">

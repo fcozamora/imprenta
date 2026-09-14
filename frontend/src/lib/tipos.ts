@@ -21,22 +21,29 @@ export interface FilaDashboard {
   telefono: string;
   telefono_wa: string | null;
   tipo_trabajo_id: number;
+  tipo_codigo: string;
   tipo_trabajo: string;
   nombre_trabajo: string;
   cantidad: number;
   archivo_sin_cambios: number;
   etapa: string | null;
+  etapa_codigo: string | null;
   etapa_icono: string | null;
   etapa_color: string | null;
   secuencia_actual: number;
   disenador_id: number | null;
   disenador: string | null;
+  costurera_id: number | null;
+  costurera: string | null;
+  costurera_telefono: string | null;
+  sin_confeccion: number | null;
   vendedor_id: number;
   vendedor: string;
   fecha_ingreso: string;
   fecha_entrega: string;
   estado: string;
   finalizada: number;
+  ultimo_cambio_etapa: string | null;
   dias_restantes: number;
   por_vencer: number;
   estancada: number;
@@ -47,6 +54,8 @@ export interface EtapaFlujo {
   id: number;
   codigo: string;
   nombre: string;
+  /** Nombre a mostrar cuando la etapa todavía está por hacerse. */
+  nombre_pendiente: string | null;
   icono: string;
   color: string;
 }

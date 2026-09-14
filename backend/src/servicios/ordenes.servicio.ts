@@ -2,6 +2,8 @@ import type { PoolConnection } from 'mysql2/promise';
 import { pool, enTransaccion } from '../db/pool.js';
 import { ErrorHttp } from '../util/errores.js';
 
+/** Categorías que trabaja el personal de imprenta. */
+const TIPOS_PRODUCCION = ['TALONARIOS', 'IMPRESION_DIGITAL', 'HP_LATEX', 'SOBRES'];
 // ---------------------------------------------------------------- Tipos
 
 export interface LineaTalonario {
@@ -248,7 +250,7 @@ async function flujoDeLinea(tipoTrabajoId: number, sinCambios: boolean) {
 
 async function historialEtapas(lineaId: number) {
   const [filas] = await pool.query(
-    `SELECT le.etapa_id, e.codigo, e.nombre, le.marcada_en, le.minutos_en_etapa,
+    `SELECT le.etapa_id, e.codigo, e.nombre, le.marcada_en, le.minutos_en_etapa, le.nota,
             u.nombre_completo AS usuario, p.nombre AS puesto
        FROM linea_etapas le
        JOIN etapas e ON e.id = le.etapa_id
@@ -306,7 +308,8 @@ async function detalleDeLinea(lineaId: number, tipoCodigo: string) {
     }
     case 'TEXTIL': {
       const [d] = await pool.query(
-        `SELECT dt.perfil_impresion, t.nombre AS tela, c.nombre AS costurera
+        `SELECT dt.perfil_impresion, dt.costurera_id, dt.sin_confeccion,
+                t.nombre AS tela, c.nombre AS costurera
            FROM detalle_textil dt
            JOIN telas t ON t.id = dt.tela_id
            LEFT JOIN costureras c ON c.id = dt.costurera_id
@@ -343,6 +346,8 @@ export interface FiltrosDashboard {
   tipoTrabajoId?: number;
   soloPorVencer?: boolean;
   soloSinTomar?: boolean;
+  misTrabajosDe?: number;
+  soloProduccion?: boolean;
   incluirFinalizadas?: boolean;
   busqueda?: string;
 }
@@ -351,7 +356,13 @@ export async function dashboard(filtros: FiltrosDashboard) {
   const condiciones: string[] = [];
   const valores: any[] = [];
 
-  if (!filtros.incluirFinalizadas) condiciones.push('v.finalizada = 0');
+    if (!filtros.incluirFinalizadas) condiciones.push('v.finalizada = 0');
+
+  // El personal de imprenta solo ve sus categorías.
+  if (filtros.soloProduccion) {
+    condiciones.push(`v.tipo_codigo IN (${TIPOS_PRODUCCION.map(() => '?').join(',')})`);
+    valores.push(...TIPOS_PRODUCCION);
+  }
   if (filtros.vendedorId) {
     condiciones.push('v.vendedor_id = ?');
     valores.push(filtros.vendedorId);
@@ -362,6 +373,10 @@ export async function dashboard(filtros: FiltrosDashboard) {
   }
   if (filtros.soloPorVencer) condiciones.push('v.por_vencer = 1');
   if (filtros.soloSinTomar) condiciones.push('v.disenador_id IS NULL');
+  if (filtros.misTrabajosDe) {
+    condiciones.push('v.disenador_id = ?');
+    valores.push(filtros.misTrabajosDe);
+  }
   if (filtros.busqueda) {
     condiciones.push(
       '(v.numero_orden = ? OR v.cliente LIKE ? OR v.cliente_cedula LIKE ? OR v.nombre_comercial LIKE ? OR v.telefono LIKE ?)'
@@ -382,18 +397,41 @@ export async function dashboard(filtros: FiltrosDashboard) {
   return filas;
 }
 
+/** Trabajos textiles que están en manos de una costurera. */
+export async function confeccionTextil(costureraId?: number) {
+  const condiciones = [
+    `v.tipo_codigo = 'TEXTIL'`,
+    'v.finalizada = 0',
+    'v.costurera_id IS NOT NULL',
+  ];
+  const valores: any[] = [];
+
+  if (costureraId) {
+    condiciones.push('v.costurera_id = ?');
+    valores.push(costureraId);
+  }
+
+  const [filas] = await pool.query(
+    `SELECT * FROM v_ordenes_dashboard v
+      WHERE ${condiciones.join(' AND ')}
+      ORDER BY v.fecha_entrega, v.numero_orden`,
+    valores
+  );
+  return filas;
+}
+
 // ---------------------------------------------------------------- Etapas
 
-export async function avanzarEtapa(
-  lineaId: number,
-  usuarioId: number,
-  nota?: string,
-  costureraId?: number | null
-) {
-  // Antes de avanzar, vemos cuál sería la siguiente etapa.
+export interface DatosAvance {
+  nota?: string | null;
+  costureraId?: number | null;
+  sinConfeccion?: boolean;
+}
+
+export async function avanzarEtapa(lineaId: number, usuarioId: number, datos: DatosAvance = {}) {
+  // Antes de avanzar averiguamos cuál sería la siguiente etapa.
   const [previo] = await pool.query(
-    `SELECT ol.tipo_trabajo_id, ol.archivo_sin_cambios, ol.secuencia_actual,
-            tt.codigo AS tipo_codigo,
+    `SELECT ol.id, tt.codigo AS tipo_codigo,
             (SELECT e.codigo
                FROM flujo_etapas f
                JOIN etapas e ON e.id = f.etapa_id
@@ -401,7 +439,8 @@ export async function avanzarEtapa(
                 AND f.secuencia > ol.secuencia_actual
                 AND NOT (ol.archivo_sin_cambios = 1 AND f.omitir_sin_cambios = 1)
               ORDER BY f.secuencia LIMIT 1) AS siguiente_codigo,
-            (SELECT dt.costurera_id FROM detalle_textil dt WHERE dt.linea_id = ol.id) AS costurera_actual
+            (SELECT dt.costurera_id FROM detalle_textil dt WHERE dt.linea_id = ol.id) AS costurera_actual,
+            (SELECT dt.sin_confeccion FROM detalle_textil dt WHERE dt.linea_id = ol.id) AS sin_confeccion_actual
        FROM orden_lineas ol
        JOIN tipos_trabajo tt ON tt.id = ol.tipo_trabajo_id
       WHERE ol.id = ?`,
@@ -410,32 +449,59 @@ export async function avanzarEtapa(
   const info = (previo as any[])[0];
   if (!info) throw new ErrorHttp(404, 'Línea de orden no encontrada');
 
-  // Un trabajo textil no entra a Confección sin costurera asignada.
-  const entraAConfeccion = info.tipo_codigo === 'TEXTIL' && info.siguiente_codigo === 'CONFECCION';
-  if (entraAConfeccion) {
-    const definitiva = costureraId ?? info.costurera_actual;
-    if (!definitiva) {
+  // Al sublimar un textil hay que definir quién confecciona (o que no lleva confección).
+  const entraASublimacion =
+    info.tipo_codigo === 'TEXTIL' && info.siguiente_codigo === 'SUBLIMACION';
+
+  if (entraASublimacion) {
+    const yaDefinido = info.costurera_actual != null || info.sin_confeccion_actual === 1;
+    const llegaDefinido = datos.costureraId != null || datos.sinConfeccion === true;
+
+    if (!yaDefinido && !llegaDefinido) {
       throw new ErrorHttp(
         400,
-        'Debe indicar a qué costurera se envía el trabajo',
+        'Debe indicar a qué costurera se entrega el trabajo',
         'COSTURERA_REQUERIDA'
       );
     }
-    const [existe] = await pool.query(
-      `SELECT id FROM costureras WHERE id = ? AND activo = 1`,
-      [definitiva]
-    );
-    if (!(existe as any[]).length) {
-      throw new ErrorHttp(400, 'La costurera indicada no existe o está inactiva');
+
+    if (llegaDefinido) {
+      if (datos.sinConfeccion) {
+        await pool.query(
+          `UPDATE detalle_textil SET costurera_id = NULL, sin_confeccion = 1 WHERE linea_id = ?`,
+          [lineaId]
+        );
+      } else {
+        const [existe] = await pool.query(
+          `SELECT id FROM costureras WHERE id = ? AND activo = 1`,
+          [datos.costureraId]
+        );
+        if (!(existe as any[]).length) {
+          throw new ErrorHttp(400, 'La costurera indicada no existe o está inactiva');
+        }
+        await pool.query(
+          `UPDATE detalle_textil SET costurera_id = ?, sin_confeccion = 0 WHERE linea_id = ?`,
+          [datos.costureraId, lineaId]
+        );
+      }
     }
-    await pool.query(`UPDATE detalle_textil SET costurera_id = ? WHERE linea_id = ?`, [
-      definitiva,
-      lineaId,
-    ]);
+  }
+
+  // La entrega siempre deja constancia escrita.
+  if (info.siguiente_codigo === 'ENTREGADO' && !datos.nota?.trim()) {
+    throw new ErrorHttp(
+      400,
+      'Debe escribir una observación de la entrega',
+      'NOTA_REQUERIDA'
+    );
   }
 
   try {
-    await pool.query(`CALL sp_avanzar_etapa(?, ?, ?)`, [lineaId, usuarioId, nota ?? null]);
+    await pool.query(`CALL sp_avanzar_etapa(?, ?, ?)`, [
+      lineaId,
+      usuarioId,
+      datos.nota?.trim() || null,
+    ]);
   } catch (error: any) {
     // El procedimiento lanza SIGNAL con mensajes ya redactados para el usuario.
     if (error?.sqlState === '45000') throw new ErrorHttp(400, error.sqlMessage);
@@ -450,7 +516,34 @@ export async function avanzarEtapa(
       WHERE ol.id = ?`,
     [lineaId]
   );
-  return (filas as any[])[0];
+  const resultado = (filas as any[])[0];
+
+  // Si esta línea cerró la orden, el trigger encoló el aviso al cliente.
+  // Lo devolvemos para poder abrir WhatsApp de inmediato.
+  if (resultado?.etapa_codigo === 'FINALIZADO') {
+    const [wa] = await pool.query(
+      `SELECT w.id, w.telefono, w.mensaje, o.numero_orden, c.nombre AS cliente
+         FROM whatsapp_cola w
+         JOIN ordenes  o ON o.id = w.orden_id
+         JOIN clientes c ON c.id = o.cliente_id
+         JOIN orden_lineas ol ON ol.orden_id = o.id
+        WHERE ol.id = ?
+          AND w.plantilla = 'ORDEN_LISTA'
+          AND w.estado = 'PENDIENTE'
+        ORDER BY w.id DESC
+        LIMIT 1`,
+      [lineaId]
+    );
+    const mensaje = (wa as any[])[0];
+    if (mensaje) {
+      resultado.whatsapp = {
+        ...mensaje,
+        enlace: `https://wa.me/${mensaje.telefono}?text=${encodeURIComponent(mensaje.mensaje)}`,
+      };
+    }
+  }
+
+  return resultado;
 }
 
 /** El diseñador toma la orden: queda ligado a ella de aquí en adelante. */
@@ -464,10 +557,15 @@ export async function tomarLinea(lineaId: number, disenadorId: number) {
   if (linea.finalizada) throw new ErrorHttp(400, 'El trabajo ya está finalizado');
   if (linea.disenador_id) throw new ErrorHttp(409, 'Otro diseñador ya tomó este trabajo');
 
-  await pool.query(
+  const [res] = await pool.query(
     `UPDATE orden_lineas SET disenador_id = ?, tomada_en = NOW()
       WHERE id = ? AND disenador_id IS NULL`,
     [disenadorId, lineaId]
   );
+  // Si otro la tomó en el intervalo, no la pisamos.
+  if ((res as any).affectedRows === 0) {
+    throw new ErrorHttp(409, 'Otro diseñador ya tomó este trabajo');
+  }
+
   return { mensaje: 'Trabajo asignado' };
 }

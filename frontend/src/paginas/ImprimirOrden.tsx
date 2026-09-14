@@ -49,7 +49,7 @@ export default function ImprimirOrden() {
         {/* ---------- Encabezado ---------- */}
         <header className="cabecera">
           <div className="cabecera-marca">
-            <img src="/logo.svg" alt="" className="logo-impreso" />
+            <img src="/impresc.svg" alt="" className="logo-impreso" />
             <div>
               <h1 className="empresa">Orden de Trabajo</h1>
               <p className="tel">WhatsApp 2460-1930</p>

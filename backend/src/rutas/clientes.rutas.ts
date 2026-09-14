@@ -44,9 +44,8 @@ rutasClientes.get('/clientes/cedula/:cedula', async (req, res, next) => {
 
 rutasClientes.get('/clientes', async (req, res, next) => {
   try {
-    const termino = ((req.query.q as string) ?? '').trim();
-    if (termino.length < 2) return res.json([]);
-    res.json(await clientes.buscar(termino));
+    // Sin término de búsqueda devolvemos los más recientes.
+    res.json(await clientes.buscar(((req.query.q as string) ?? '').trim()));
   } catch (error) {
     next(error);
   }

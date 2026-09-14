@@ -123,16 +123,39 @@ rutasOrdenes.patch(
   }
 );
 
+// ---------------------------------------------------------------- Confección textil
+
+rutasOrdenes.get('/confeccion', requierePermiso('confeccion.ver'), async (req, res, next) => {
+  try {
+    res.json(
+      await ordenes.confeccionTextil(
+        req.query.costurera ? Number(req.query.costurera) : undefined
+      )
+    );
+  } catch (error) {
+    next(error);
+  }
+});
+
 // ---------------------------------------------------------------- Órdenes
 
 rutasOrdenes.get('/ordenes', async (req, res, next) => {
   try {
+    const u = req.usuario!;
+    // Quien solo tiene ver_produccion no ve textil, bordado, DTF ni sellos.
+    const limitado =
+      !u.esAdmin &&
+      !u.permisos.includes('ordenes.ver_todas') &&
+      u.permisos.includes('ordenes.ver_produccion');
+
     res.json(
       await ordenes.dashboard({
         vendedorId: req.query.vendedor ? Number(req.query.vendedor) : undefined,
         tipoTrabajoId: req.query.tipo ? Number(req.query.tipo) : undefined,
         soloPorVencer: req.query.porVencer === 'true',
         soloSinTomar: req.query.sinTomar === 'true',
+        misTrabajosDe: req.query.mios === 'true' ? u.id : undefined,
+        soloProduccion: limitado,
         incluirFinalizadas: req.query.finalizadas === 'true',
         busqueda: (req.query.q as string) || undefined,
       })
@@ -177,18 +200,12 @@ rutasOrdenes.post(
     try {
       const datos = z
         .object({
-          nota: z.string().trim().optional(),
+          nota: z.string().trim().optional().nullable(),
           costureraId: z.number().int().positive().optional().nullable(),
+          sinConfeccion: z.boolean().optional(),
         })
         .parse(req.body ?? {});
-      res.json(
-        await ordenes.avanzarEtapa(
-          Number(req.params.id),
-          req.usuario!.id,
-          datos.nota,
-          datos.costureraId
-        )
-      );
+      res.json(await ordenes.avanzarEtapa(Number(req.params.id), req.usuario!.id, datos));
     } catch (error) {
       next(error);
     }

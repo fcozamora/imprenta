@@ -5,30 +5,50 @@ export interface RangoFechas {
   hasta?: string;
 }
 
-/** Bitácora: qué hizo cada trabajador de producción, con fechas. */
-export async function bitacora(filtros: RangoFechas & { usuarioId?: number; puestoId?: number }) {
-  const condiciones: string[] = [];
+/**
+ * Bitácora: una línea por trabajador y orden, no por etapa.
+ * El detalle de etapas se ve dentro de cada orden.
+ */
+export async function bitacora(filtros: RangoFechas & { usuarioId?: number }) {
+  const condiciones: string[] = ['le.usuario_id IS NOT NULL'];
   const valores: any[] = [];
 
   if (filtros.usuarioId) {
-    condiciones.push('usuario_id = ?');
+    condiciones.push('le.usuario_id = ?');
     valores.push(filtros.usuarioId);
   }
   if (filtros.desde) {
-    condiciones.push('DATE(marcada_en) >= ?');
+    condiciones.push('DATE(le.marcada_en) >= ?');
     valores.push(filtros.desde);
   }
   if (filtros.hasta) {
-    condiciones.push('DATE(marcada_en) <= ?');
+    condiciones.push('DATE(le.marcada_en) <= ?');
     valores.push(filtros.hasta);
   }
-  const where = condiciones.length ? `WHERE ${condiciones.join(' AND ')}` : '';
 
   const [filas] = await pool.query(
-    `SELECT * FROM v_bitacora_trabajadores
-     ${where}
-     ORDER BY marcada_en DESC
-     LIMIT 1000`,
+    `SELECT u.id                AS usuario_id,
+            u.nombre_completo   AS trabajador,
+            p.nombre            AS puesto,
+            o.id                AS orden_id,
+            o.numero_orden,
+            c.nombre            AS cliente,
+            GROUP_CONCAT(DISTINCT tt.nombre ORDER BY tt.nombre SEPARATOR ', ') AS tipos_trabajo,
+            GROUP_CONCAT(DISTINCT ol.nombre_trabajo ORDER BY ol.linea SEPARATOR ', ') AS trabajos,
+            COUNT(le.id)        AS etapas_marcadas,
+            MIN(le.marcada_en)  AS primera_vez,
+            MAX(le.marcada_en)  AS ultima_vez
+       FROM linea_etapas le
+       JOIN usuarios      u  ON u.id  = le.usuario_id
+       JOIN puestos       p  ON p.id  = u.puesto_id
+       JOIN orden_lineas  ol ON ol.id = le.linea_id
+       JOIN ordenes       o  ON o.id  = ol.orden_id
+       JOIN clientes      c  ON c.id  = o.cliente_id
+       JOIN tipos_trabajo tt ON tt.id = ol.tipo_trabajo_id
+      WHERE ${condiciones.join(' AND ')}
+      GROUP BY u.id, o.id
+      ORDER BY ultima_vez DESC
+      LIMIT 1000`,
     valores
   );
   return filas;
