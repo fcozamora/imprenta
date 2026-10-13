@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { LoaderCircle, TriangleAlert, Download } from 'lucide-react';
 import { api } from '../lib/api';
-import { fecha, numero } from '../lib/formato';
+import { numero } from '../lib/formato';
 
 function hoy() { return new Date().toISOString().slice(0, 10); }
 function inicioMes() {

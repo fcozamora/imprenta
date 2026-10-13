@@ -23,7 +23,6 @@ app.use(cors());
 app.use(express.json());
 app.set('trust proxy', true);
 
-
 app.get('/api/salud', async (_req, res) => {
   try {
     const [filas] = await pool.query(
@@ -49,13 +48,15 @@ app.use('/api', rutasOperacion);
 app.use('/api', rutasReportes);
 app.use('/api', rutasExtras);
 app.use('/api/pedidos-externos', rutasPedidosExternos);
+
 // En produccion el backend tambien sirve las pantallas compiladas.
 const carpetaWeb = path.resolve(process.cwd(), 'public');
 app.use(express.static(carpetaWeb));
+
 // Cualquier direccion que no sea de la API devuelve la aplicacion,
 // para que funcionen los enlaces internos al recargar la pagina.
 app.get(/^(?!\/api).*/, (_req, res) => {
-res.sendFile(path.join(carpetaWeb, 'index.html'));
+  res.sendFile(path.join(carpetaWeb, 'index.html'));
 });
 
 app.use((_req, res) => {

@@ -22,7 +22,7 @@ import ConfeccionTextil from './paginas/ConfeccionTextil';
 import Papeles from './paginas/Papeles';
 import Camisetas from './paginas/Camisetas';
 import Trali from './paginas/Trali';
-import PedidosExternos from './paginas/PedidosExternos.js';
+import PedidosExternos from './paginas/PedidosExternos';
 
 const cliente = new QueryClient({
   defaultOptions: {
