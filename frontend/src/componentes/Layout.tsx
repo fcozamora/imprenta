@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import {
   Printer, LayoutDashboard, FilePlus2, Users, Stamp, Package,
-  ClipboardList, BarChart3, Settings, LogOut, Menu, X, Search, Bell, Scissors,Shirt
+  ClipboardList, BarChart3, Settings, LogOut, Menu, X, Search, Bell, Scissors,Shirt, FileStack, Truck, PackageOpen
 } from 'lucide-react';
 import { useSesion } from '../lib/sesion';
 import Campana from './Campana';
@@ -21,9 +21,13 @@ const MENU: ItemMenu[] = [
   { a: '/clientes', texto: 'Clientes', icono: Users, permisos: ['clientes.gestionar'] },
   { a: '/sellos', texto: 'Sellos', icono: Stamp, permisos: ['sellos.ver'] },
   { a: '/materiales', texto: 'Materiales', icono: Package, permisos: ['materiales.solicitar', 'materiales.atender'] },
+  { a: '/camisetas', texto: 'Camisetas', icono: Shirt, permisos: ['camisetas.solicitar', 'camisetas.atender'] },
+  { a: '/trali', texto: 'Trali', icono: Truck, permisos: ['trali.gestionar'] },
+  { a: '/pedidos-externos', texto: 'Pedidos Externos', icono: PackageOpen, permisos: ['pedidos_externos.gestionar'] },
   { a: '/notificaciones', texto: 'Notificaciones', icono: Bell },
   { a: '/bitacora', texto: 'Bitácora', icono: ClipboardList, permisos: ['bitacora.ver'] },
   { a: '/reportes', texto: 'Reportes', icono: BarChart3, permisos: ['reportes.generar'] },
+  { a: '/papeles', texto: 'Papeles', icono: FileStack, permisos: ['catalogos.gestionar'] },
   { a: '/admin', texto: 'Administración', icono: Settings, permisos: ['usuarios.gestionar'] },
   { a: '/costureras', texto: 'Costureras', icono: Scissors, permisos: ['costureras.gestionar'] },
   { a: '/confeccion', texto: 'Confección textil', icono: Shirt, permisos: ['confeccion.ver'] },
@@ -33,6 +37,7 @@ export default function Layout() {
   const { usuario, salir, puede } = useSesion();
   const [menuAbierto, setMenuAbierto] = useState(false);
   const [busqueda, setBusqueda] = useState('');
+  const [campo, setCampo] = useState<'CLIENTE' | 'ORDEN' | 'TELEFONO'>('CLIENTE');
   const navegar = useNavigate();
   
 
@@ -49,8 +54,12 @@ export default function Layout() {
     evento.preventDefault();
     const termino = busqueda.trim();
     if (!termino) return;
-    // Si son solo dígitos lo tratamos como número de orden.
-    navegar(/^\d+$/.test(termino) ? `/ordenes/numero/${termino}` : `/?q=${encodeURIComponent(termino)}`);
+    // Un número de orden lleva directo a esa orden; lo demás filtra el listado.
+    if (campo === 'ORDEN') {
+      navegar(`/ordenes/numero/${termino.replace(/\D/g, '')}`);
+    } else {
+      navegar(`/?q=${encodeURIComponent(termino)}&campo=${campo}`);
+    }
     setBusqueda('');
   }
 
@@ -72,15 +81,38 @@ export default function Layout() {
             <img src="/impresc.svg" alt="Imprenta SC" className="h-8 w-auto" />
           </div>
 
-          <form onSubmit={buscar} className="ml-2 flex-1 max-w-md">
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              <input
-                value={busqueda}
-                onChange={(e) => setBusqueda(e.target.value)}
-                placeholder="Buscar por orden, cédula, cliente o teléfono"
-                className="campo pl-9 py-2"
-              />
+          <form onSubmit={buscar} className="ml-2 flex-1 max-w-lg">
+            <div className="flex rounded-lg ring-1 ring-slate-300 transition-shadow
+                            focus-within:ring-2 focus-within:ring-marca-600">
+              <select
+                value={campo}
+                onChange={(e) => setCampo(e.target.value as typeof campo)}
+                aria-label="Buscar por"
+                className="shrink-0 rounded-l-lg border-0 bg-slate-50 py-2 pl-3 pr-7 text-sm
+                           font-medium text-slate-600 focus:outline-none"
+              >
+                <option value="CLIENTE">Cliente</option>
+                <option value="ORDEN">Orden</option>
+                <option value="TELEFONO">Teléfono</option>
+              </select>
+
+              <div className="relative flex-1">
+                <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <input
+                  value={busqueda}
+                  onChange={(e) => setBusqueda(e.target.value)}
+                  inputMode={campo === 'CLIENTE' ? 'text' : 'numeric'}
+                  placeholder={
+                    campo === 'ORDEN'
+                      ? 'Número de orden'
+                      : campo === 'TELEFONO'
+                        ? 'Teléfono del cliente'
+                        : 'Nombre o cédula del cliente'
+                  }
+                  className="w-full rounded-r-lg border-0 bg-white py-2 pl-8 pr-3 text-sm
+                             text-slate-900 placeholder:text-slate-400 focus:outline-none"
+                />
+              </div>
             </div>
           </form>
 

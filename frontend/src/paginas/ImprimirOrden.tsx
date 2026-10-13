@@ -170,6 +170,7 @@ function DetalleLinea({ linea }: { linea: any }) {
           d.encolado && 'Encolado',
           d.perforado && 'Perforado',
           d.grapado && 'Grapado',
+          d.carbon && 'Carbón',
         ].filter(Boolean);
         if (acabados.length) campos.push(['Acabados', acabados.join(', ')]);
         if (d.copias?.length) {

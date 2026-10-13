@@ -15,6 +15,7 @@ export async function todos() {
     tintas,
     vendedores,
     costureras,
+    tallas,
   ] = await Promise.all([
     pool.query(
       `SELECT id, codigo, nombre, dias_habiles_entrega, dias_alerta_previa, requiere_imagen
@@ -25,7 +26,11 @@ export async function todos() {
       `SELECT tipo_trabajo_id, secuencia, etapa_id, omitir_sin_cambios
          FROM flujo_etapas ORDER BY tipo_trabajo_id, secuencia`
     ),
-    pool.query(`SELECT id, nombre FROM tipos_papel WHERE activo = 1 ORDER BY nombre`),
+    pool.query(
+      `SELECT id, nombre, categoria, es_original
+         FROM tipos_papel WHERE activo = 1
+        ORDER BY FIELD(categoria,'QUIMICO','BOND','BRISTOL','ESPECIAL'), nombre`
+    ),
     pool.query(
       `SELECT id, nombre FROM tamanos_talonario WHERE activo = 1 ORDER BY orden_visual`
     ),
@@ -41,6 +46,10 @@ export async function todos() {
         ORDER BY u.apellido, u.nombre`
     ),
     pool.query(`SELECT id, nombre FROM costureras WHERE activo = 1 ORDER BY nombre`),
+    pool.query(
+      `SELECT id, genero, nombre FROM tallas_camiseta WHERE activo = 1
+        ORDER BY genero DESC, orden_visual`
+    ),
   ]);
 
   return {
@@ -55,7 +64,8 @@ export async function todos() {
     telas: telas[0],
     tintas: tintas[0],
     vendedores: vendedores[0],
-    costureras: costureras[0],
+    costureras: costureras[0], 
+    tallas: tallas[0],
   };
 }
 

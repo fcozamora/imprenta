@@ -23,7 +23,11 @@ export default function Ordenes() {
   });
 
   const busqueda = params.get('q') ?? undefined;
-  const filtrosFinales = useMemo(() => ({ ...filtros, q: busqueda }), [filtros, busqueda]);
+  const campoBusqueda = (params.get('campo') as 'CLIENTE' | 'ORDEN' | 'TELEFONO') ?? undefined;
+  const filtrosFinales = useMemo(
+    () => ({ ...filtros, q: busqueda, campo: campoBusqueda }),
+    [filtros, busqueda, campoBusqueda]
+  );
   
 
   const { data: catalogos } = useCatalogos();

@@ -23,6 +23,7 @@ const esquemaTalonario = z.object({
   encolado: z.boolean().optional(),
   perforado: z.boolean().optional(),
   grapado: z.boolean().optional(),
+  carbon: z.boolean().optional(),
   numeracionInicial: z.number().int().nonnegative().optional().nullable(),
   copias: z
     .array(
@@ -63,13 +64,16 @@ const esquemaOrden = z.object({
   clienteId: z.number().int().positive('Debe seleccionar un cliente'),
   vendedorId: z.number().int().positive('Debe seleccionar un vendedor'),
   fechaIngreso: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().nullable(),
-  medioMuestra: z.enum(['WHATSAPP', 'EMAIL']).optional().nullable(),
+  medioMuestra: z.enum(['WHATSAPP', 'EMAIL', 'VENDEDOR']).optional().nullable(),
   emailMuestra: z
     .string()
     .email('El correo de la muestra no es válido')
     .optional()
     .nullable()
     .or(z.literal('')),
+  urgente: z.boolean().optional(),
+  motivoUrgencia: z.string().trim().max(200).optional().nullable(),
+  fechaEntrega: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().nullable(),
   observaciones: z.string().trim().optional().nullable(),
   lineas: z.array(esquemaLinea).min(1, 'Agregue al menos un tipo de trabajo'),
 });
@@ -158,6 +162,7 @@ rutasOrdenes.get('/ordenes', async (req, res, next) => {
         soloProduccion: limitado,
         incluirFinalizadas: req.query.finalizadas === 'true',
         busqueda: (req.query.q as string) || undefined,
+        campoBusqueda: (req.query.campo as 'CLIENTE' | 'ORDEN' | 'TELEFONO') || undefined,
       })
     );
   } catch (error) {
@@ -191,6 +196,25 @@ rutasOrdenes.post('/ordenes', requierePermiso('ordenes.crear'), async (req, res,
   }
 });
 
+rutasOrdenes.patch('/ordenes/:id', requierePermiso('ordenes.editar'), async (req, res, next) => {
+  try {
+    const datos = z
+      .object({
+        vendedorId: z.number().int().positive().optional(),
+        observaciones: z.string().trim().optional().nullable(),
+        urgente: z.boolean().optional(),
+        motivoUrgencia: z.string().trim().max(200).optional().nullable(),
+        fechaEntrega: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().nullable(),
+        medioMuestra: z.enum(['WHATSAPP', 'EMAIL', 'VENDEDOR']).optional().nullable(),
+        emailMuestra: z.string().email('Correo inválido').optional().nullable().or(z.literal('')),
+      })
+      .parse(req.body);
+    res.json(await ordenes.actualizar(Number(req.params.id), datos, req.usuario!.id));
+  } catch (error) {
+    next(error);
+  }
+});
+
 // ---------------------------------------------------------------- Líneas
 
 rutasOrdenes.post(
@@ -203,6 +227,7 @@ rutasOrdenes.post(
           nota: z.string().trim().optional().nullable(),
           costureraId: z.number().int().positive().optional().nullable(),
           sinConfeccion: z.boolean().optional(),
+          perfilImpresion: z.string().trim().max(120).optional().nullable(),
         })
         .parse(req.body ?? {});
       res.json(await ordenes.avanzarEtapa(Number(req.params.id), req.usuario!.id, datos));

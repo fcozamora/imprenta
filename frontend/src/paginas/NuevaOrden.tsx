@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation } from '@tanstack/react-query';
-import { Plus, LoaderCircle, CircleCheck, Printer } from 'lucide-react';
+import { Plus, LoaderCircle, CircleCheck, Printer, Zap } from 'lucide-react';
 import { api, mensajeDeError } from '../lib/api';
 import { useCatalogos } from '../lib/consultas';
 import BuscadorCliente, { type Cliente } from '../componentes/BuscadorCliente';
@@ -14,8 +14,11 @@ export default function NuevaOrden() {
   const [cliente, setCliente] = useState<Cliente | null>(null);
   const [vendedorId, setVendedorId] = useState<number | ''>('');
   const [observaciones, setObservaciones] = useState('');
-  const [medioMuestra, setMedioMuestra] = useState<'WHATSAPP' | 'EMAIL' | ''>('');
+  const [medioMuestra, setMedioMuestra] = useState<'WHATSAPP' | 'EMAIL' | 'VENDEDOR' | ''>('');
   const [emailMuestra, setEmailMuestra] = useState('');
+  const [urgente, setUrgente] = useState(false);
+  const [motivoUrgencia, setMotivoUrgencia] = useState('');
+  const [fechaEntrega, setFechaEntrega] = useState('');
   const [lineas, setLineas] = useState<DatosLinea[]>([lineaVacia()]);
   const [error, setError] = useState('');
   const [creada, setCreada] = useState<{
@@ -35,6 +38,9 @@ export default function NuevaOrden() {
     setObservaciones('');
     setMedioMuestra('');
     setEmailMuestra('');
+    setUrgente(false);
+    setMotivoUrgencia('');
+    setFechaEntrega('');
     setLineas([lineaVacia()]);
   }
 
@@ -48,6 +54,9 @@ export default function NuevaOrden() {
         vendedorId: Number(vendedorId),
         medioMuestra: medioMuestra || null,
         emailMuestra: medioMuestra === 'EMAIL' ? emailMuestra.trim() || null : null,
+        urgente,
+        motivoUrgencia: urgente ? motivoUrgencia.trim() || null : null,
+        fechaEntrega: urgente && fechaEntrega ? fechaEntrega : null,
         observaciones: observaciones.trim() || null,
         lineas: lineas.map((l) => {
           const tipo = catalogos!.tiposTrabajo.find((t) => t.id === l.tipoTrabajoId);
@@ -77,6 +86,7 @@ export default function NuevaOrden() {
                   encolado: l.encolado,
                   perforado: l.perforado,
                   grapado: l.grapado,
+                  carbon: l.carbon,
                   numeracionInicial:
                     l.numeracionInicial === '' ? null : Number(l.numeracionInicial),
                   copias: l.papeles
@@ -214,13 +224,14 @@ export default function NuevaOrden() {
           </div>
         </div>
 
-        {/* Canal para enviar la muestra al cliente */}
+        {/* Canal para hacerle llegar la muestra al cliente */}
         <div>
           <label className="etiqueta">Enviar muestra por</label>
           <div className="flex flex-wrap gap-2">
             {([
               ['WHATSAPP', 'WhatsApp'],
               ['EMAIL', 'Correo electrónico'],
+              ['VENDEDOR', 'Muestra a vendedor(a)'],
             ] as const).map(([valor, texto]) => (
               <button
                 key={valor}
@@ -242,6 +253,12 @@ export default function NuevaOrden() {
             <p className="mt-2 text-xs text-slate-500">Se enviará al {cliente.telefono}</p>
           )}
 
+          {medioMuestra === 'VENDEDOR' && (
+            <p className="mt-2 text-xs text-slate-500">
+              La muestra se le entrega al vendedor para que se la haga llegar al cliente.
+            </p>
+          )}
+
           {medioMuestra === 'EMAIL' && (
             <div className="mt-2">
               <input
@@ -260,6 +277,53 @@ export default function NuevaOrden() {
                   Usar el de facturación ({cliente.email_facturacion})
                 </button>
               )}
+            </div>
+          )}
+        </div>
+
+        {/* Urgencia: permite fijar una fecha distinta a la calculada por plazo */}
+        <div className="border-t border-slate-100 pt-3">
+          <label className="flex w-fit cursor-pointer items-center gap-2 rounded-lg bg-red-50 px-3 py-2
+                            text-sm font-medium text-red-800 ring-1 ring-red-200">
+            <input
+              type="checkbox"
+              checked={urgente}
+              onChange={(e) => {
+                setUrgente(e.target.checked);
+                if (!e.target.checked) {
+                  setMotivoUrgencia('');
+                  setFechaEntrega('');
+                }
+              }}
+              className="h-4 w-4 rounded border-red-300 text-red-600 focus:ring-red-600"
+            />
+            <Zap className="h-4 w-4" />
+            Orden urgente
+          </label>
+
+          {urgente && (
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <div>
+                <label className="etiqueta">Fecha de entrega acordada</label>
+                <input
+                  type="date"
+                  className="campo"
+                  value={fechaEntrega}
+                  onChange={(e) => setFechaEntrega(e.target.value)}
+                />
+                <p className="mt-1 text-xs text-slate-500">
+                  Si la deja vacía, se usa el plazo normal de cada tipo de trabajo.
+                </p>
+              </div>
+              <div>
+                <label className="etiqueta">Motivo</label>
+                <input
+                  className="campo"
+                  value={motivoUrgencia}
+                  placeholder="Ej. El cliente lo necesita para un evento"
+                  onChange={(e) => setMotivoUrgencia(e.target.value)}
+                />
+              </div>
             </div>
           )}
         </div>

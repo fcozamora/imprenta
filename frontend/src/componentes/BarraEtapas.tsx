@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  LoaderCircle, X, Scissors, PackageCheck, CircleSlash, MessageCircle, CircleCheck,
+  LoaderCircle, X, Scissors, PackageCheck, CircleSlash, MessageCircle, CircleCheck, Printer,
 } from 'lucide-react';
 import { api, mensajeDeError } from '../lib/api';
 import { iconoEtapa } from '../lib/iconos';
@@ -33,7 +33,7 @@ export default function BarraEtapas({
   tipoCodigo, costureraId, sinConfeccion,
 }: Props) {
   const cliente = useQueryClient();
-  const [pidiendo, setPidiendo] = useState<'costurera' | 'nota' | null>(null);
+  const [pidiendo, setPidiendo] = useState<'costurera' | 'nota' | 'perfil' | null>(null);
   const [avisoWa, setAvisoWa] = useState<AvisoWhatsapp | null>(null);
 
   const avanzar = useMutation({
@@ -53,6 +53,7 @@ export default function BarraEtapas({
       const codigo = error?.response?.data?.codigo;
       if (codigo === 'COSTURERA_REQUERIDA') return setPidiendo('costurera');
       if (codigo === 'NOTA_REQUERIDA') return setPidiendo('nota');
+      if (codigo === 'PERFIL_REQUERIDO') return setPidiendo('perfil');
       alert(mensajeDeError(error));
     },
   });
@@ -154,6 +155,14 @@ export default function BarraEtapas({
           enviando={avanzar.isPending}
           onCerrar={() => setPidiendo(null)}
           onConfirmar={(nota) => avanzar.mutate({ nota })}
+        />
+      )}
+
+      {pidiendo === 'perfil' && (
+        <ModalPerfil
+          enviando={avanzar.isPending}
+          onCerrar={() => setPidiendo(null)}
+          onConfirmar={(perfil) => avanzar.mutate({ perfilImpresion: perfil })}
         />
       )}
 
@@ -328,6 +337,46 @@ function ModalNotaEntrega({
   );
 }
 
+/** El textil no se imprime sin perfil definido: queda guardado en el trabajo. */
+function ModalPerfil({
+  enviando, onCerrar, onConfirmar,
+}: {
+  enviando: boolean;
+  onCerrar: () => void;
+  onConfirmar: (perfil: string) => void;
+}) {
+  const [perfil, setPerfil] = useState('');
+
+  return (
+    <Caja titulo="Perfil de impresión" icono={Printer} onCerrar={onCerrar} cerrarAlTocarFuera={false}>
+      <p className="mb-3 text-sm text-slate-500">
+        Indique con qué perfil se va a imprimir este trabajo. Queda guardado en la orden.
+      </p>
+
+      <input
+        className="campo"
+        value={perfil}
+        autoFocus
+        placeholder="Ej. Sublimación tela clara 200%"
+        onChange={(e) => setPerfil(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && perfil.trim().length >= 3) onConfirmar(perfil.trim());
+        }}
+      />
+
+      <div className="mt-4 flex gap-2">
+        <button onClick={() => onConfirmar(perfil.trim())}
+          disabled={perfil.trim().length < 3 || enviando}
+          className="boton-primario flex-1">
+          {enviando && <LoaderCircle className="h-4 w-4 animate-spin" />}
+          Guardar y avanzar
+        </button>
+        <button onClick={onCerrar} className="boton-secundario">Cancelar</button>
+      </div>
+    </Caja>
+  );
+}
+
 /**
  * Aparece al finalizar la orden. El enlace se abre con un clic del usuario,
  * que es la única forma en que el navegador no bloquea la ventana nueva.
@@ -339,7 +388,6 @@ function ModalWhatsapp({
   onCerrar: () => void;
 }) {
   const cliente = useQueryClient();
-  const [enviado, setEnviado] = useState(false);
 
   const marcar = useMutation({
     mutationFn: () => api.post(`/whatsapp/${aviso.id}/enviado`),
@@ -366,24 +414,17 @@ function ModalWhatsapp({
           href={aviso.enlace}
           target="_blank"
           rel="noreferrer"
-          onClick={() => setEnviado(true)}
+          onClick={() => marcar.mutate()}
           className="boton-primario w-full bg-emerald-600 hover:bg-emerald-700"
         >
           <MessageCircle className="h-4 w-4" />
           Abrir WhatsApp
         </a>
 
-        {enviado ? (
-          <button onClick={() => marcar.mutate()} disabled={marcar.isPending}
-            className="boton-secundario w-full">
-            {marcar.isPending && <LoaderCircle className="h-4 w-4 animate-spin" />}
-            Ya lo envié
-          </button>
-        ) : (
-          <button onClick={onCerrar} className="w-full py-2 text-xs text-slate-400 hover:text-slate-600">
-            Enviarlo después desde Notificaciones
-          </button>
-        )}
+        <button onClick={onCerrar}
+          className="w-full py-2 text-xs text-slate-400 hover:text-slate-600">
+          Enviarlo después desde Notificaciones
+        </button>
       </div>
     </Caja>
   );

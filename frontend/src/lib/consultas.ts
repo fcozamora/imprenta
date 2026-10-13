@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from './api';
 import type { FilaDashboard, EtapaFlujo } from './tipos';
 
@@ -9,7 +9,11 @@ export interface Catalogos {
   }>;
   etapas: Array<{ id: number; codigo: string; nombre: string; icono: string; color: string }>;
   flujos: Array<{ tipo_trabajo_id: number; secuencia: number; etapa_id: number; omitir_sin_cambios: number }>;
-  papeles: Array<{ id: number; nombre: string }>;
+  papeles: Array<{
+    id: number; nombre: string;
+    categoria: 'BOND' | 'BRISTOL' | 'QUIMICO' | 'ESPECIAL';
+    es_original: number;
+  }>;
   tamanosTalonario: Array<{ id: number; nombre: string }>;
   tiposCopia: Array<{ id: number; nombre: string; cantidad_hojas: number }>;
   tiposSobre: Array<{ id: number; nombre: string }>;
@@ -18,6 +22,7 @@ export interface Catalogos {
   tintas: Array<{ id: number; nombre: string; hex: string }>;
   vendedores: Array<{ id: number; nombre: string }>;
   costureras: Array<{ id: number; nombre: string }>;
+  tallas: Array<{ id: number; genero: 'MUJER' | 'HOMBRE'; nombre: string }>;
 }
 
 /** Los catálogos cambian poco: se guardan una hora en memoria. */
@@ -37,6 +42,7 @@ export interface FiltrosOrdenes {
   mios?: boolean;
   finalizadas?: boolean;
   q?: string;
+  campo?: 'CLIENTE' | 'ORDEN' | 'TELEFONO';
 }
 
 export function useOrdenes(filtros: FiltrosOrdenes) {
@@ -51,6 +57,7 @@ export function useOrdenes(filtros: FiltrosOrdenes) {
       if (filtros.mios) params.set('mios', 'true');
       if (filtros.finalizadas) params.set('finalizadas', 'true');
       if (filtros.q) params.set('q', filtros.q);
+      if (filtros.campo) params.set('campo', filtros.campo);
       return (await api.get<FilaDashboard[]>(`/ordenes?${params}`)).data;
     },
   });
@@ -93,4 +100,56 @@ export function flujoDesdeCatalogos(
         color: e.color,
       };
     });
+}
+
+import type { PedidoExterno, DatosPedidoExterno } from './tipos.js';
+
+export function usePedidosExternos(retirados: boolean, busqueda: string) {
+  return useQuery({
+    queryKey: ['pedidos-externos', retirados, busqueda],
+    queryFn: async () => {
+      const { data } = await api.get<PedidoExterno[]>('/pedidos-externos', {
+        params: { retirados: retirados ? 'true' : 'false', q: busqueda || undefined },
+      });
+      return data;
+    },
+  });
+}
+
+export function useGuardarPedidoExterno() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (args: { id?: number; datos: DatosPedidoExterno }) => {
+      const cuerpo = { ...args.datos, numero_orden: Number(args.datos.numero_orden) };
+      const { data } = args.id
+        ? await api.put<PedidoExterno>(`/pedidos-externos/${args.id}`, cuerpo)
+        : await api.post<PedidoExterno>('/pedidos-externos', cuerpo);
+      return data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['pedidos-externos'] }),
+  });
+}
+
+export function useRetirarPedidoExterno() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (args: { id: number; retirado: boolean }) => {
+      const { data } = await api.patch<PedidoExterno>(
+        `/pedidos-externos/${args.id}/retirado`,
+        { retirado: args.retirado },
+      );
+      return data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['pedidos-externos'] }),
+  });
+}
+
+export function useEliminarPedidoExterno() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: number) => {
+      await api.delete(`/pedidos-externos/${id}`);
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['pedidos-externos'] }),
+  });
 }

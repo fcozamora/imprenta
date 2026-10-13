@@ -1,11 +1,13 @@
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
-  ArrowLeft, LoaderCircle, MessageCircle, Package, FileText, Mail, IdCard,
+  ArrowLeft, LoaderCircle, MessageCircle, Package, FileText, Mail, IdCard, Pencil,
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { useSesion } from '../lib/sesion';
 import { fecha, enlaceWhatsapp } from '../lib/formato';
+import { useState } from 'react';
+import EditarCliente from '../componentes/EditarCliente';
 
 export default function DetalleCliente() {
   const { id } = useParams();
@@ -38,22 +40,32 @@ export default function DetalleCliente() {
   const c = cliente.data;
   const lista = ordenes.data ?? [];
   const abiertas = lista.filter((o: any) => o.estado === 'ABIERTA').length;
+  const [editando, setEditando] = useState(false);
 
   return (
     <div className="mx-auto max-w-5xl space-y-4">
-      <div className="flex items-start gap-3">
-        <button
-          onClick={() => navegar(-1)}
-          aria-label="Volver"
-          className="mt-0.5 grid h-9 w-9 place-items-center rounded-lg text-slate-500
-                     transition-colors hover:bg-slate-100 hover:text-slate-900"
-        >
-          <ArrowLeft className="h-5 w-5" />
-        </button>
-        <div>
-          <h1 className="text-xl font-semibold text-slate-900">{c.nombre}</h1>
-          {c.nombre_comercial && <p className="text-sm text-slate-500">{c.nombre_comercial}</p>}
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-start gap-3">
+          <button
+            onClick={() => navegar(-1)}
+            aria-label="Volver"
+            className="mt-0.5 grid h-9 w-9 place-items-center rounded-lg text-slate-500
+                       transition-colors hover:bg-slate-100 hover:text-slate-900"
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </button>
+          <div>
+            <h1 className="text-xl font-semibold text-slate-900">{c.nombre}</h1>
+            {c.nombre_comercial && <p className="text-sm text-slate-500">{c.nombre_comercial}</p>}
+          </div>
         </div>
+
+        {puede('clientes.gestionar') && (
+          <button onClick={() => setEditando(true)} className="boton-secundario">
+            <Pencil className="h-4 w-4" />
+            Editar
+          </button>
+        )}
       </div>
 
       {/* ---------- Datos ---------- */}
@@ -207,6 +219,7 @@ export default function DetalleCliente() {
           </div>
         )}
       </div>
+      {editando && <EditarCliente cliente={c} onCerrar={() => setEditando(false)} />}
     </div>
   );
 }

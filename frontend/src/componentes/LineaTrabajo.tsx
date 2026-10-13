@@ -1,19 +1,16 @@
 import { Trash2 } from 'lucide-react';
 import type { Catalogos } from '../lib/consultas';
 
-/** El original de un talonario con copias siempre va en el mismo papel. */
-const PAPEL_ORIGINAL = 'Químico Blanco';
-
 /**
  * Papeles disponibles según la posición de la hoja:
  * - Talonario sencillo: cualquier papel, no hay copiado.
- * - Original de un talonario con copias: siempre el mismo.
+ * - Original de un talonario con copias: el marcado como original en el catálogo.
  * - Intermedias y final: solo químicos.
  */
 function papelesDeCopia(papeles: Catalogos['papeles'], rol: string, totalCopias: number) {
   if (totalCopias === 1) return papeles;
-  if (rol === 'ORIGINAL') return papeles.filter((p) => p.nombre === PAPEL_ORIGINAL);
-  return papeles.filter((p) => p.nombre.startsWith('Químico'));
+  if (rol === 'ORIGINAL') return papeles.filter((p) => p.es_original === 1);
+  return papeles.filter((p) => p.categoria === 'QUIMICO');
 }
 
 export interface DatosLinea {
@@ -33,6 +30,7 @@ export interface DatosLinea {
   encolado: boolean;
   perforado: boolean;
   grapado: boolean;
+  carbon: boolean;
   numeracionInicial: number | '';
   papeles: number[];
   // Otras categorías
@@ -50,7 +48,7 @@ export function lineaVacia(): DatosLinea {
     clave: crypto.randomUUID(),
     tipoTrabajoId: '', nombreTrabajo: '', cantidad: '', archivoSinCambios: false,
     observaciones: '', cantidadBlocks: '', hojasPorBlock: '', tamanoId: '', tamanoOtro: '',
-    tipoCopiaId: '', tinta: '', encolado: false, perforado: false, grapado: false,
+    tipoCopiaId: '', tinta: '', encolado: false, perforado: false, grapado: false, carbon: false,
     numeracionInicial: '', papeles: [], tipoSobreId: '', tamano: '', materialId: '',
     telaId: '', perfilImpresion: '', codigoSello: '', tintaId: '',
   };
@@ -94,7 +92,7 @@ export default function LineaTrabajo({
     const papeles = Array(total).fill(0);
     // Con copias, el original queda fijo y preseleccionado.
     if (total > 1) {
-      const original = catalogos.papeles.find((p) => p.nombre === PAPEL_ORIGINAL);
+      const original = catalogos.papeles.find((p) => p.es_original === 1);
       if (original) papeles[0] = original.id;
     }
     onCambio({ tipoCopiaId: id, papeles });
@@ -278,12 +276,15 @@ export default function LineaTrabajo({
                               : `Intermedio ${posicion - 1}`;
 
                       if (rol === 'ORIGINAL' && copias > 1) {
+                        const original = catalogos.papeles.find((p) => p.es_original === 1);
                         return (
                           <div key={posicion} className="flex items-center gap-2">
                             <span className="w-24 shrink-0 text-sm font-medium text-slate-600">
                               {etiqueta}
                             </span>
-                            <div className="campo bg-slate-100 text-slate-600">{PAPEL_ORIGINAL}</div>
+                            <div className="campo bg-slate-100 text-slate-600">
+                              {original?.nombre ?? 'Sin definir'}
+                            </div>
                           </div>
                         );
                       }
@@ -327,6 +328,7 @@ export default function LineaTrabajo({
                     ['encolado', 'Encolado'],
                     ['perforado', 'Perforado'],
                     ['grapado', 'Grapado'],
+                    ['carbon', 'Carbón'],
                   ] as const).map(([clave, texto]) => (
                     <label key={clave} className="flex cursor-pointer items-center gap-2 text-sm text-slate-700">
                       <input

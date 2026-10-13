@@ -1,20 +1,22 @@
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  ArrowLeft, Printer, MessageCircle, LoaderCircle, Clock, User, Hand,
+  ArrowLeft, Printer, MessageCircle, LoaderCircle, Clock, User, Hand, Pencil, Zap,
 } from 'lucide-react';
 import { api, mensajeDeError } from '../lib/api';
 import { useSesion } from '../lib/sesion';
+import { useState } from 'react';
 import { fecha, fechaHora, numero, enlaceWhatsapp } from '../lib/formato';
 import BarraEtapas from '../componentes/BarraEtapas';
 import SubirMuestra from '../componentes/SubirMuestra';
+import EditarOrden from '../componentes/EditarOrden';
 
 export default function DetalleOrden() {
   const { id, numero: num } = useParams();
   const navegar = useNavigate();
   const { puede } = useSesion();
   const cliente = useQueryClient();
-
+  const [editando, setEditando] = useState(false);
   const ruta = num ? `/ordenes/numero/${num}` : `/ordenes/${id}`;
 
   const { data: orden, isLoading, error } = useQuery({
@@ -63,9 +65,15 @@ export default function DetalleOrden() {
             <ArrowLeft className="h-5 w-5" />
           </button>
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-2xl font-bold text-slate-900">#{orden.numero_orden}</h1>
               <EstadoOrden estado={orden.estado} />
+              {orden.urgente === 1 && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-semibold text-red-700">
+                  <Zap className="h-3 w-3" />
+                  Urgente
+                </span>
+              )}
             </div>
             <p className="mt-0.5 text-sm text-slate-500">
               Registrada por {orden.registrada_por} · {fechaHora(orden.creado_en)}
@@ -73,10 +81,18 @@ export default function DetalleOrden() {
           </div>
         </div>
 
-        <Link to={`/ordenes/${orden.id}/imprimir`} className="boton-secundario">
-          <Printer className="h-4 w-4" />
-          Imprimir
-        </Link>
+        <div className="flex gap-2">
+          {puede('ordenes.editar') && (
+            <button onClick={() => setEditando(true)} className="boton-secundario">
+              <Pencil className="h-4 w-4" />
+              Editar
+            </button>
+          )}
+          <Link to={`/ordenes/${orden.id}/imprimir`} className="boton-secundario">
+            <Printer className="h-4 w-4" />
+            Imprimir
+          </Link>
+        </div>
       </div>
 
       {/* ---------- Cliente ---------- */}
@@ -109,8 +125,10 @@ export default function DetalleOrden() {
 
             {orden.medio_muestra && (
               <p className="mt-2 inline-block rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">
-                Muestra por {orden.medio_muestra === 'WHATSAPP' ? 'WhatsApp' : 'correo'}
-                {orden.email_muestra ? `: ${orden.email_muestra}` : ''}
+                {orden.medio_muestra === 'WHATSAPP' && 'Muestra por WhatsApp'}
+                {orden.medio_muestra === 'EMAIL' &&
+                  `Muestra por correo${orden.email_muestra ? `: ${orden.email_muestra}` : ''}`}
+                {orden.medio_muestra === 'VENDEDOR' && `Muestra a ${orden.vendedor}`}
               </p>
             )}
           </div>
@@ -136,6 +154,13 @@ export default function DetalleOrden() {
             {orden.observaciones}
           </p>
         )}
+
+        {orden.motivo_urgencia && (
+          <p className="mt-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800 ring-1 ring-red-200">
+            <strong>Urgente:</strong> {orden.motivo_urgencia}
+          </p>
+        )}
+
       </div>
 
       {/* ---------- Líneas de trabajo ---------- */}
@@ -257,6 +282,7 @@ export default function DetalleOrden() {
           )}
         </div>
       ))}
+      {editando && <EditarOrden orden={orden} onCerrar={() => setEditando(false)} />}
     </div>
   );
 }
@@ -305,6 +331,7 @@ function Especificaciones({ linea }: { linea: any }) {
           d.encolado && 'Encolado',
           d.perforado && 'Perforado',
           d.grapado && 'Grapado',
+          d.carbon && 'Carbón',
         ].filter(Boolean);
         if (acabados.length) filas.push(['Acabados', acabados.join(', ')]);
         if (d.copias?.length) {

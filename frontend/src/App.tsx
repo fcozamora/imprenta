@@ -19,6 +19,10 @@ import Notificaciones from './paginas/Notificaciones';
 import Admin from './paginas/Admin';
 import Costureras from './paginas/Costureras';
 import ConfeccionTextil from './paginas/ConfeccionTextil';
+import Papeles from './paginas/Papeles';
+import Camisetas from './paginas/Camisetas';
+import Trali from './paginas/Trali';
+import PedidosExternos from './paginas/PedidosExternos.js';
 
 const cliente = new QueryClient({
   defaultOptions: {
@@ -71,6 +75,11 @@ export default function App() {
                 <Route path="/notificaciones" element={<Notificaciones />} />
                 <Route path="/admin" element={<Admin />} />
                 <Route path="/costureras" element={<Costureras />} />
+                <Route path="/papeles" element={<Papeles />} />
+                <Route path="/camisetas" element={<Camisetas />} />
+                <Route path="/camisetas/:id" element={<Camisetas />} />
+                <Route path="/trali" element={<Trali />} />
+                <Route path="/pedidos-externos" element={<PedidosExternos />} />
               </Route>
             </Route>
 

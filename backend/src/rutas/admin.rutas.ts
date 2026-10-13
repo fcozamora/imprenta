@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import * as usuarios from '../servicios/usuarios.servicio.js';
 import * as puestos from '../servicios/puestos.servicio.js';
+import * as papeles from '../servicios/papeles.servicio.js';
 import {
   autenticar,
   exigirPasswordDefinitiva,
@@ -162,6 +163,78 @@ rutasAdmin.put(
     try {
       const { permisos } = z.object({ permisos: z.array(z.string()) }).parse(req.body);
       res.json(await puestos.asignarPermisos(Number(req.params.id), permisos));
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// ---------------------------------------------------------------- Papeles
+
+rutasAdmin.get('/papeles', async (_req, res, next) => {
+  try {
+    res.json(await papeles.listar());
+  } catch (error) {
+    next(error);
+  }
+});
+
+const esquemaPapel = z.object({
+  nombre: z.string().trim().min(2, 'El nombre es obligatorio'),
+  categoria: z.enum(['BOND', 'BRISTOL', 'QUIMICO', 'ESPECIAL']),
+  esOriginal: z.boolean().optional(),
+  minimo: z.number().int().nonnegative().optional(),
+});
+
+rutasAdmin.post('/papeles', requierePermiso('catalogos.gestionar'), async (req, res, next) => {
+  try {
+    res.status(201).json(await papeles.crear(esquemaPapel.parse(req.body)));
+  } catch (error) {
+    next(error);
+  }
+});
+
+rutasAdmin.patch('/papeles/:id', requierePermiso('catalogos.gestionar'), async (req, res, next) => {
+  try {
+    const datos = esquemaPapel
+      .partial()
+      .extend({ activo: z.boolean().optional() })
+      .parse(req.body);
+    res.json(await papeles.actualizar(Number(req.params.id), datos));
+  } catch (error) {
+    next(error);
+  }
+});
+
+rutasAdmin.get('/papeles/:id/movimientos', async (req, res, next) => {
+  try {
+    res.json(await papeles.movimientos(Number(req.params.id)));
+  } catch (error) {
+    next(error);
+  }
+});
+
+rutasAdmin.post(
+  '/papeles/:id/movimiento',
+  requierePermiso('catalogos.gestionar'),
+  async (req, res, next) => {
+    try {
+      const datos = z
+        .object({
+          tipo: z.enum(['ENTRADA', 'SALIDA', 'AJUSTE']),
+          cantidad: z.number().int(),
+          motivo: z.string().trim().max(150).optional(),
+        })
+        .parse(req.body);
+      res.json(
+        await papeles.mover(
+          Number(req.params.id),
+          datos.tipo,
+          datos.cantidad,
+          req.usuario!.id,
+          datos.motivo
+        )
+      );
     } catch (error) {
       next(error);
     }

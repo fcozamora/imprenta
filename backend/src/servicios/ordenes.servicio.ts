@@ -16,6 +16,7 @@ export interface LineaTalonario {
   encolado?: boolean;
   perforado?: boolean;
   grapado?: boolean;
+  carbon?: boolean;
   numeracionInicial?: number | null;
   copias?: Array<{ posicion: number; rol: 'ORIGINAL' | 'INTERMEDIO' | 'FINAL'; papelId: number }>;
 }
@@ -37,8 +38,11 @@ export interface NuevaOrden {
   clienteId: number;
   vendedorId: number;
   fechaIngreso?: string | null;
-  medioMuestra?: 'WHATSAPP' | 'EMAIL' | null;
+  medioMuestra?: 'WHATSAPP' | 'EMAIL' | 'VENDEDOR' | null;
   emailMuestra?: string | null;
+  urgente?: boolean;
+  motivoUrgencia?: string | null;
+  fechaEntrega?: string | null;
   observaciones?: string | null;
   lineas: LineaOrden[];
 }
@@ -62,8 +66,8 @@ async function insertarDetalle(cx: PoolConnection, lineaId: number, linea: Linea
       await cx.query(
         `INSERT INTO detalle_talonario
            (linea_id, cantidad_blocks, hojas_por_block, tamano_id, tamano_otro,
-            tipo_copia_id, tinta, encolado, perforado, grapado, numeracion_inicial)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            tipo_copia_id, tinta, encolado, perforado, grapado, carbon, numeracion_inicial)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           lineaId,
           t.cantidadBlocks,
@@ -75,6 +79,7 @@ async function insertarDetalle(cx: PoolConnection, lineaId: number, linea: Linea
           t.encolado ? 1 : 0,
           t.perforado ? 1 : 0,
           t.grapado ? 1 : 0,
+          t.carbon ? 1 : 0,
           t.numeracionInicial ?? null,
         ]
       );
@@ -140,16 +145,19 @@ export async function crear(datos: NuevaOrden, creadoPor: number) {
 
   return enTransaccion(async (cx) => {
     // El número de orden y la fecha de ingreso los pone el trigger si van en NULL.
-    const [resultado] = await cx.query(
+        const [resultado] = await cx.query(
       `INSERT INTO ordenes (numero_orden, cliente_id, vendedor_id, fecha_ingreso,
-                            medio_muestra, email_muestra, observaciones, creado_por)
-       VALUES (0, ?, ?, ?, ?, ?, ?, ?)`,
+                            medio_muestra, email_muestra, urgente, motivo_urgencia,
+                            observaciones, creado_por)
+       VALUES (0, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         datos.clienteId,
         datos.vendedorId,
         datos.fechaIngreso ?? null,
         datos.medioMuestra ?? null,
         datos.emailMuestra?.trim() || null,
+        datos.urgente ? 1 : 0,
+        datos.motivoUrgencia?.trim() || null,
         datos.observaciones ?? null,
         creadoPor,
       ]
@@ -178,6 +186,17 @@ export async function crear(datos: NuevaOrden, creadoPor: number) {
       // Coloca la línea en su primera etapa (Diseño) y deja el registro.
       await cx.query(`CALL sp_avanzar_etapa(?, ?, NULL)`, [lineaId, creadoPor]);
     }
+    // Una orden urgente lleva la fecha que se acordó, no la calculada por plazo.
+    if (datos.urgente && datos.fechaEntrega) {
+      await cx.query(`UPDATE orden_lineas SET fecha_entrega = ? WHERE orden_id = ?`, [
+        datos.fechaEntrega,
+        ordenId,
+      ]);
+      await cx.query(`UPDATE ordenes SET fecha_entrega = ? WHERE id = ?`, [
+        datos.fechaEntrega,
+        ordenId,
+      ]);
+    }
 
     const [orden] = await cx.query(
       `SELECT id, numero_orden, fecha_ingreso, fecha_entrega FROM ordenes WHERE id = ?`,
@@ -193,7 +212,7 @@ export async function obtener(id: number) {
   const [ordenes] = await pool.query(
     `SELECT o.id, o.numero_orden, o.fecha_ingreso, o.fecha_entrega, o.estado,
             o.observaciones, o.creado_en, o.finalizada_en,
-            o.medio_muestra, o.email_muestra,
+            o.medio_muestra, o.email_muestra, o.urgente, o.motivo_urgencia,
             c.id AS cliente_id, c.cedula AS cliente_cedula, c.nombre AS cliente,
             c.nombre_comercial, c.telefono, c.telefono_wa, c.email_facturacion,
             o.vendedor_id, v.nombre_completo AS vendedor,
@@ -339,6 +358,73 @@ export async function porNumero(numero: number) {
   return obtener(fila.id);
 }
 
+export interface CambiosOrden {
+  vendedorId?: number;
+  observaciones?: string | null;
+  urgente?: boolean;
+  motivoUrgencia?: string | null;
+  fechaEntrega?: string | null;
+  medioMuestra?: 'WHATSAPP' | 'EMAIL' | 'VENDEDOR' | null;
+  emailMuestra?: string | null;
+}
+
+export async function actualizar(id: number, cambios: CambiosOrden, usuarioId: number) {
+  const [filas] = await pool.query(
+    `SELECT id, estado, urgente, fecha_entrega, observaciones FROM ordenes WHERE id = ?`,
+    [id]
+  );
+  const antes = (filas as any[])[0];
+  if (!antes) throw new ErrorHttp(404, 'Orden no encontrada');
+  if (antes.estado === 'ANULADA') throw new ErrorHttp(400, 'La orden está anulada');
+
+  await pool.query(
+    `UPDATE ordenes
+        SET vendedor_id     = COALESCE(?, vendedor_id),
+            observaciones   = COALESCE(?, observaciones),
+            urgente         = COALESCE(?, urgente),
+            motivo_urgencia = COALESCE(?, motivo_urgencia),
+            fecha_entrega   = COALESCE(?, fecha_entrega),
+            medio_muestra   = COALESCE(?, medio_muestra),
+            email_muestra   = COALESCE(?, email_muestra)
+      WHERE id = ?`,
+    [
+      cambios.vendedorId ?? null,
+      cambios.observaciones ?? null,
+      cambios.urgente === undefined ? null : cambios.urgente ? 1 : 0,
+      cambios.motivoUrgencia ?? null,
+      cambios.fechaEntrega ?? null,
+      cambios.medioMuestra ?? null,
+      cambios.emailMuestra ?? null,
+      id,
+    ]
+  );
+
+  // La fecha de la orden manda sobre la de sus líneas.
+  if (cambios.fechaEntrega) {
+    await pool.query(`UPDATE orden_lineas SET fecha_entrega = ? WHERE orden_id = ?`, [
+      cambios.fechaEntrega,
+      id,
+    ]);
+  }
+
+  await pool.query(
+    `INSERT INTO auditoria (tabla, registro_id, accion, usuario_id, datos_antes, datos_despues)
+     VALUES ('ordenes', ?, 'UPDATE', ?,
+             JSON_OBJECT('urgente', ?, 'fecha_entrega', ?),
+             JSON_OBJECT('urgente', ?, 'fecha_entrega', ?))`,
+    [
+      id,
+      usuarioId,
+      antes.urgente,
+      antes.fecha_entrega,
+      cambios.urgente === undefined ? antes.urgente : cambios.urgente ? 1 : 0,
+      cambios.fechaEntrega ?? antes.fecha_entrega,
+    ]
+  );
+
+  return obtener(id);
+}
+
 // ---------------------------------------------------------------- Dashboards
 
 export interface FiltrosDashboard {
@@ -350,7 +436,7 @@ export interface FiltrosDashboard {
   soloProduccion?: boolean;
   incluirFinalizadas?: boolean;
   busqueda?: string;
-}
+  campoBusqueda?: 'CLIENTE' | 'ORDEN' | 'TELEFONO';}
 
 export async function dashboard(filtros: FiltrosDashboard) {
   const condiciones: string[] = [];
@@ -377,12 +463,34 @@ export async function dashboard(filtros: FiltrosDashboard) {
     condiciones.push('v.disenador_id = ?');
     valores.push(filtros.misTrabajosDe);
   }
+  
   if (filtros.busqueda) {
-    condiciones.push(
-      '(v.numero_orden = ? OR v.cliente LIKE ? OR v.cliente_cedula LIKE ? OR v.nombre_comercial LIKE ? OR v.telefono LIKE ?)'
-    );
     const patron = `%${filtros.busqueda}%`;
-    valores.push(Number(filtros.busqueda) || 0, patron, patron, patron, patron);
+    switch (filtros.campoBusqueda) {
+      case 'ORDEN':
+        condiciones.push('v.numero_orden = ?');
+        valores.push(Number(filtros.busqueda) || 0);
+        break;
+      case 'TELEFONO':
+        // Compara solo los dígitos, para que dé igual cómo esté escrito.
+        condiciones.push(
+          "REPLACE(REPLACE(REPLACE(v.telefono,' ',''),'-',''),'+','') LIKE ?"
+        );
+        valores.push(`%${filtros.busqueda.replace(/\D/g, '')}%`);
+        break;
+      case 'CLIENTE':
+        condiciones.push(
+          '(v.cliente LIKE ? OR v.nombre_comercial LIKE ? OR v.cliente_cedula LIKE ?)'
+        );
+        valores.push(patron, patron, patron);
+        break;
+      default:
+        // Sin campo definido, busca en todo.
+        condiciones.push(
+          '(v.numero_orden = ? OR v.cliente LIKE ? OR v.cliente_cedula LIKE ? OR v.nombre_comercial LIKE ? OR v.telefono LIKE ?)'
+        );
+        valores.push(Number(filtros.busqueda) || 0, patron, patron, patron, patron);
+    }
   }
 
   const where = condiciones.length ? `WHERE ${condiciones.join(' AND ')}` : '';
@@ -428,6 +536,13 @@ export interface DatosAvance {
   sinConfeccion?: boolean;
 }
 
+export interface DatosAvance {
+  nota?: string | null;
+  costureraId?: number | null;
+  sinConfeccion?: boolean;
+  perfilImpresion?: string | null;
+}
+
 export async function avanzarEtapa(lineaId: number, usuarioId: number, datos: DatosAvance = {}) {
   // Antes de avanzar averiguamos cuál sería la siguiente etapa.
   const [previo] = await pool.query(
@@ -439,21 +554,40 @@ export async function avanzarEtapa(lineaId: number, usuarioId: number, datos: Da
                 AND f.secuencia > ol.secuencia_actual
                 AND NOT (ol.archivo_sin_cambios = 1 AND f.omitir_sin_cambios = 1)
               ORDER BY f.secuencia LIMIT 1) AS siguiente_codigo,
-            (SELECT dt.costurera_id FROM detalle_textil dt WHERE dt.linea_id = ol.id) AS costurera_actual,
-            (SELECT dt.sin_confeccion FROM detalle_textil dt WHERE dt.linea_id = ol.id) AS sin_confeccion_actual
+            dt.costurera_id   AS costurera_actual,
+            dt.sin_confeccion AS sin_confeccion_actual,
+            dt.perfil_impresion AS perfil_actual
        FROM orden_lineas ol
        JOIN tipos_trabajo tt ON tt.id = ol.tipo_trabajo_id
+       LEFT JOIN detalle_textil dt ON dt.linea_id = ol.id
       WHERE ol.id = ?`,
     [lineaId]
   );
   const info = (previo as any[])[0];
   if (!info) throw new ErrorHttp(404, 'Línea de orden no encontrada');
 
-  // Al sublimar un textil hay que definir quién confecciona (o que no lleva confección).
-  const entraASublimacion =
-    info.tipo_codigo === 'TEXTIL' && info.siguiente_codigo === 'SUBLIMACION';
+  const esTextil = info.tipo_codigo === 'TEXTIL';
 
-  if (entraASublimacion) {
+  // Un textil no se imprime sin perfil de impresión definido.
+  if (esTextil && info.siguiente_codigo === 'IMPRESION') {
+    const perfil = datos.perfilImpresion?.trim() || info.perfil_actual;
+    if (!perfil) {
+      throw new ErrorHttp(
+        400,
+        'Debe indicar el perfil de impresión antes de imprimir',
+        'PERFIL_REQUERIDO'
+      );
+    }
+    if (datos.perfilImpresion?.trim()) {
+      await pool.query(`UPDATE detalle_textil SET perfil_impresion = ? WHERE linea_id = ?`, [
+        datos.perfilImpresion.trim(),
+        lineaId,
+      ]);
+    }
+  }
+
+  // Al sublimar hay que definir quién confecciona (o que no lleva confección).
+  if (esTextil && info.siguiente_codigo === 'SUBLIMACION') {
     const yaDefinido = info.costurera_actual != null || info.sin_confeccion_actual === 1;
     const llegaDefinido = datos.costureraId != null || datos.sinConfeccion === true;
 
@@ -489,11 +623,7 @@ export async function avanzarEtapa(lineaId: number, usuarioId: number, datos: Da
 
   // La entrega siempre deja constancia escrita.
   if (info.siguiente_codigo === 'ENTREGADO' && !datos.nota?.trim()) {
-    throw new ErrorHttp(
-      400,
-      'Debe escribir una observación de la entrega',
-      'NOTA_REQUERIDA'
-    );
+    throw new ErrorHttp(400, 'Debe escribir una observación de la entrega', 'NOTA_REQUERIDA');
   }
 
   try {
@@ -519,7 +649,6 @@ export async function avanzarEtapa(lineaId: number, usuarioId: number, datos: Da
   const resultado = (filas as any[])[0];
 
   // Si esta línea cerró la orden, el trigger encoló el aviso al cliente.
-  // Lo devolvemos para poder abrir WhatsApp de inmediato.
   if (resultado?.etapa_codigo === 'FINALIZADO') {
     const [wa] = await pool.query(
       `SELECT w.id, w.telefono, w.mensaje, o.numero_orden, c.nombre AS cliente

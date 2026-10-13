@@ -54,8 +54,27 @@ export interface EtapaFlujo {
   id: number;
   codigo: string;
   nombre: string;
-  /** Nombre a mostrar cuando la etapa todavía está por hacerse. */
-  nombre_pendiente: string | null;
   icono: string;
   color: string;
+}
+
+export interface PedidoExterno {
+  id: number;
+  orden_id: number;
+  numero_orden: number;
+  cliente: string;
+  fecha_solicitud: string;
+  pedido_solicitado: string;
+  cantidad: string;
+  descripcion: string | null;
+  retirado: number;
+  retirado_en: string | null;
+}
+
+export interface DatosPedidoExterno {
+  numero_orden: number | string;
+  fecha_solicitud: string;
+  pedido_solicitado: string;
+  cantidad: string;
+  descripcion: string;
 }
