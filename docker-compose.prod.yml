@@ -9,6 +9,24 @@ services:
       - --default-time-zone=-06:00
       - --event-scheduler=ON
       - --log-bin-trust-function-creators=1
+      # Lo que antes vivia en db/conf/my.cnf. En Windows ese archivo montado
+      # queda con permisos de escritura para todos y MySQL lo ignora entero,
+      # asi que los ajustes van aca, donde no se pueden perder.
+      - --innodb-buffer-pool-size=2G
+      - --innodb-buffer-pool-instances=2
+      - --innodb-redo-log-capacity=512M
+      - --innodb-flush-log-at-trx-commit=1
+      - --innodb-flush-method=O_DIRECT
+      - --innodb-file-per-table=ON
+      - --max-connections=200
+      - --innodb-thread-concurrency=0
+      - --table-open-cache=4000
+      - --slow-query-log=1
+      - --slow-query-log-file=/var/lib/mysql/slow.log
+      - --long-query-time=0.5
+      - --log-queries-not-using-indexes=0
+      - --innodb-ft-min-token-size=2
+      - --sql-mode=STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
       MYSQL_DATABASE: ${MYSQL_DATABASE}
@@ -18,7 +36,6 @@ services:
     volumes:
       - datos_mysql:/var/lib/mysql
       - ./db/init:/docker-entrypoint-initdb.d:ro
-      - ./db/conf/my.cnf:/etc/mysql/conf.d/imprenta.cnf:ro
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p${MYSQL_ROOT_PASSWORD}"]
       interval: 10s
