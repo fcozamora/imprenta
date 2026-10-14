@@ -18,7 +18,19 @@ import { rutasPedidosExternos } from './rutas/pedidosExternos.rutas.js';
 
 const app = express();
 
-app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
+// upgrade-insecure-requests obliga al navegador a pedir todo por https, y el
+// servidor de la imprenta va por http en la red local: sin quitarla, la pagina
+// queda en blanco desde cualquier equipo que no sea el propio servidor.
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+  contentSecurityPolicy: {
+    useDefaults: true,
+    directives: {
+      'upgrade-insecure-requests': null,
+      'img-src': ["'self'", 'data:', 'blob:'],
+    },
+  },
+}));
 app.use(cors());
 app.use(express.json());
 app.set('trust proxy', true);

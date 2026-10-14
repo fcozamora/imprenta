@@ -1,7 +1,8 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  Truck, Plus, LoaderCircle, X, Pencil, Trash2, Search, Download, PackageCheck,
+  Truck, Plus, LoaderCircle, X, Pencil, Trash2, Search, Download, PackageCheck, Printer,
 } from 'lucide-react';
 import { api, mensajeDeError } from '../lib/api';
 import { fecha } from '../lib/formato';
@@ -42,6 +43,7 @@ function colones(valor: string | null) {
 
 export default function Trali() {
   const cliente = useQueryClient();
+  const navegar = useNavigate();
   const [direccion, setDireccion] = useState<Direccion>('ENVIADA');
   const [desde, setDesde] = useState(haceDias(30));
   const [hasta, setHasta] = useState(hoy());
@@ -91,6 +93,13 @@ export default function Trali() {
     URL.revokeObjectURL(url);
   }
 
+  /** Hoja para firmar: las dos direcciones en la misma página. */
+  function imprimirReporte() {
+    const p = new URLSearchParams({ desde, hasta });
+    if (verEntregadas) p.set('entregadas', 'true');
+    navegar(`/trali/imprimir?${p}`);
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -105,6 +114,10 @@ export default function Trali() {
           <button onClick={exportar} disabled={filas.length === 0} className="boton-secundario">
             <Download className="h-4 w-4" />
             CSV
+          </button>
+          <button onClick={imprimirReporte} className="boton-secundario">
+            <Printer className="h-4 w-4" />
+            Reporte
           </button>
           <button onClick={() => setEditando('nueva')} className="boton-primario">
             <Plus className="h-4 w-4" />

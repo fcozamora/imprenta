@@ -22,6 +22,7 @@ import ConfeccionTextil from './paginas/ConfeccionTextil';
 import Papeles from './paginas/Papeles';
 import Camisetas from './paginas/Camisetas';
 import Trali from './paginas/Trali';
+import TraliImprimir from './paginas/TraliImprimir';
 import PedidosExternos from './paginas/PedidosExternos';
 
 const cliente = new QueryClient({
@@ -58,6 +59,7 @@ export default function App() {
             <Route element={<RutaProtegida />}>
               {/* Sin layout: la hoja de impresión va limpia */}
               <Route path="/ordenes/:id/imprimir" element={<ImprimirOrden />} />
+              <Route path="/trali/imprimir" element={<TraliImprimir />} />
 
               <Route element={<Layout />}>
                 <Route path="/" element={<Ordenes />} />

@@ -1,5 +1,6 @@
 import { Trash2 } from 'lucide-react';
 import type { Catalogos } from '../lib/consultas';
+import { nuevoId } from '../lib/id';
 
 /**
  * Papeles disponibles según la posición de la hoja:
@@ -45,7 +46,7 @@ export interface DatosLinea {
 
 export function lineaVacia(): DatosLinea {
   return {
-    clave: crypto.randomUUID(),
+    clave: nuevoId(),
     tipoTrabajoId: '', nombreTrabajo: '', cantidad: '', archivoSinCambios: false,
     observaciones: '', cantidadBlocks: '', hojasPorBlock: '', tamanoId: '', tamanoOtro: '',
     tipoCopiaId: '', tinta: '', encolado: false, perforado: false, grapado: false, carbon: false,

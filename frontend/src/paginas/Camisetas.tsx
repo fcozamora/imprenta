@@ -5,6 +5,7 @@ import { api, mensajeDeError } from '../lib/api';
 import { useCatalogos } from '../lib/consultas';
 import { useSesion } from '../lib/sesion';
 import { fecha, fechaHora } from '../lib/formato';
+import { nuevoId } from '../lib/id';
 
 interface Pedido {
   id: number;
@@ -271,7 +272,7 @@ interface LineaForm {
 }
 
 function lineaVacia(): LineaForm {
-  return { clave: crypto.randomUUID(), descripcion: '', cantidades: {} };
+  return { clave: nuevoId(), descripcion: '', cantidades: {} };
 }
 
 function ModalPedido({ onCerrar, onGuardado }: { onCerrar: () => void; onGuardado: () => void }) {

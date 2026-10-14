@@ -40,9 +40,11 @@ export async function todos() {
     pool.query(`SELECT id, nombre FROM telas WHERE activo = 1 ORDER BY nombre`),
     pool.query(`SELECT id, nombre, hex FROM tintas WHERE activo = 1 ORDER BY nombre`),
     pool.query(
+      // Cualquier usuario activo puede quedar como responsable de la orden,
+      // menos la cuenta de administracion del sistema.
       `SELECT u.id, u.nombre_completo AS nombre
-         FROM usuarios u JOIN puestos p ON p.id = u.puesto_id
-        WHERE u.activo = 1 AND p.codigo IN ('VENDEDOR','RECEPCION','GERENTE','ASIS_ADMIN')
+         FROM usuarios u
+        WHERE u.activo = 1 AND u.cedula <> '000000000'
         ORDER BY u.apellido, u.nombre`
     ),
     pool.query(`SELECT id, nombre FROM costureras WHERE activo = 1 ORDER BY nombre`),
