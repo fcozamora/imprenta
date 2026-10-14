@@ -18,6 +18,7 @@ export interface Catalogos {
   tiposCopia: Array<{ id: number; nombre: string; cantidad_hojas: number }>;
   tiposSobre: Array<{ id: number; nombre: string }>;
   materialesLatex: Array<{ id: number; nombre: string }>;
+  materialesDigital: Array<{ id: number; nombre: string }>;
   telas: Array<{ id: number; nombre: string }>;
   tintas: Array<{ id: number; nombre: string; hex: string }>;
   vendedores: Array<{ id: number; nombre: string }>;

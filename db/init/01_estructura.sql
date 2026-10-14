@@ -448,9 +448,10 @@ DROP TABLE IF EXISTS `materiales_latex`;
 CREATE TABLE `materiales_latex` (
   `id` tinyint unsigned NOT NULL AUTO_INCREMENT,
   `nombre` varchar(60) NOT NULL,
+  `categoria` enum('LATEX','DIGITAL') NOT NULL DEFAULT 'LATEX',
   `activo` tinyint(1) NOT NULL DEFAULT '1',
   PRIMARY KEY (`id`),
-  UNIQUE KEY `uq_matlatex_nombre` (`nombre`)
+  UNIQUE KEY `uq_matlatex_cat_nombre` (`categoria`,`nombre`)
 ) ENGINE=InnoDB AUTO_INCREMENT=8 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 

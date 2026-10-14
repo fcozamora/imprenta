@@ -11,6 +11,7 @@ export async function todos() {
     copias,
     sobres,
     materiales,
+    materialesDigital,
     telas,
     tintas,
     vendedores,
@@ -36,7 +37,14 @@ export async function todos() {
     ),
     pool.query(`SELECT id, nombre, cantidad_hojas FROM tipos_copia WHERE activo = 1 ORDER BY id`),
     pool.query(`SELECT id, nombre FROM tipos_sobre WHERE activo = 1 ORDER BY nombre`),
-    pool.query(`SELECT id, nombre FROM materiales_latex WHERE activo = 1 ORDER BY nombre`),
+    pool.query(
+      `SELECT id, nombre FROM materiales_latex
+        WHERE activo = 1 AND categoria = 'LATEX' ORDER BY nombre`
+    ),
+    pool.query(
+      `SELECT id, nombre FROM materiales_latex
+        WHERE activo = 1 AND categoria = 'DIGITAL' ORDER BY nombre`
+    ),
     pool.query(`SELECT id, nombre FROM telas WHERE activo = 1 ORDER BY nombre`),
     pool.query(`SELECT id, nombre, hex FROM tintas WHERE activo = 1 ORDER BY nombre`),
     pool.query(
@@ -63,6 +71,7 @@ export async function todos() {
     tiposCopia: copias[0],
     tiposSobre: sobres[0],
     materialesLatex: materiales[0],
+    materialesDigital: materialesDigital[0],
     telas: telas[0],
     tintas: tintas[0],
     vendedores: vendedores[0],

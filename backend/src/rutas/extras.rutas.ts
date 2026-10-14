@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import * as camisetas from '../servicios/camisetas.servicio.js';
 import * as trali from '../servicios/trali.servicio.js';
+import * as matImpresion from '../servicios/materialesImpresion.servicio.js';
 import {
   autenticar,
   exigirPasswordDefinitiva,
@@ -154,3 +155,60 @@ rutasExtras.delete('/trali/:id', requierePermiso('trali.gestionar'), async (req,
     next(error);
   }
 });
+// ------------------------------------- Catalogo de materiales de impresion
+
+const esquemaMaterial = z.object({
+  nombre: z.string().trim().min(2, 'Escriba el nombre del material').max(60),
+  categoria: z.enum(['LATEX', 'DIGITAL']),
+  activo: z.boolean().optional(),
+});
+
+rutasExtras.get(
+  '/materiales-impresion',
+  requierePermiso('materiales.catalogo'),
+  async (_req, res, next) => {
+    try {
+      res.json(await matImpresion.listar());
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+rutasExtras.post(
+  '/materiales-impresion',
+  requierePermiso('materiales.catalogo'),
+  async (req, res, next) => {
+    try {
+      res.status(201).json(await matImpresion.crear(esquemaMaterial.parse(req.body)));
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+rutasExtras.patch(
+  '/materiales-impresion/:id',
+  requierePermiso('materiales.catalogo'),
+  async (req, res, next) => {
+    try {
+      const datos = esquemaMaterial.partial().parse(req.body);
+      res.json(await matImpresion.actualizar(Number(req.params.id), datos));
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+rutasExtras.delete(
+  '/materiales-impresion/:id',
+  requierePermiso('materiales.catalogo'),
+  async (req, res, next) => {
+    try {
+      await matImpresion.eliminar(Number(req.params.id));
+      res.status(204).end();
+    } catch (error) {
+      next(error);
+    }
+  }
+);

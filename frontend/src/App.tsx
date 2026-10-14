@@ -24,6 +24,7 @@ import Camisetas from './paginas/Camisetas';
 import Trali from './paginas/Trali';
 import TraliImprimir from './paginas/TraliImprimir';
 import PedidosExternos from './paginas/PedidosExternos';
+import MaterialesImpresion from './paginas/MaterialesImpresion';
 
 const cliente = new QueryClient({
   defaultOptions: {
@@ -82,6 +83,7 @@ export default function App() {
                 <Route path="/camisetas/:id" element={<Camisetas />} />
                 <Route path="/trali" element={<Trali />} />
                 <Route path="/pedidos-externos" element={<PedidosExternos />} />
+                <Route path="/materiales-impresion" element={<MaterialesImpresion />} />
               </Route>
             </Route>
 

@@ -171,7 +171,7 @@ UNLOCK TABLES;
 
 LOCK TABLES `materiales_latex` WRITE;
 /*!40000 ALTER TABLE `materiales_latex` DISABLE KEYS */;
-INSERT INTO `materiales_latex` (`id`, `nombre`, `activo`) VALUES (1,'Adhesivo Brillante',1),(2,'Adhesivo Mate',1),(3,'Adhesivo Blackout',1),(4,'Lona',1),(5,'Canva',1),(6,'Termoimprimible',1),(7,'Otros Adhesivo',1);
+INSERT INTO `materiales_latex` (`id`, `nombre`, `categoria`, `activo`) VALUES (1,'Adhesivo Brillante','LATEX',1),(2,'Adhesivo Mate','LATEX',1),(3,'Adhesivo Blackout','LATEX',1),(4,'Lona','LATEX',1),(5,'Canva','LATEX',1),(6,'Termoimprimible','LATEX',1),(7,'Otros Adhesivo','LATEX',1);
 /*!40000 ALTER TABLE `materiales_latex` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -204,3 +204,13 @@ UNLOCK TABLES;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
 -- Dump completed on 2026-10-13  0:42:34
+
+-- Catalogo de materiales de impresion
+INSERT INTO `permisos` (`codigo`, `modulo`, `descripcion`)
+VALUES ('materiales.catalogo', 'TALLER',
+        'Mantener el catalogo de materiales de HP Latex e Impresion Digital');
+
+INSERT INTO `puesto_permisos` (`puesto_id`, `permiso_codigo`)
+SELECT p.id, 'materiales.catalogo'
+FROM puestos p
+WHERE p.nombre IN ('Administrador', 'Gerente', 'Diseñador');

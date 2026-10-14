@@ -2,8 +2,7 @@ import { useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import {
   Printer, LayoutDashboard, FilePlus2, Users, Stamp, Package,
-  ClipboardList, BarChart3, Settings, LogOut, Menu, X, Search, Bell, Scissors,Shirt, FileStack, Truck, PackageOpen
-} from 'lucide-react';
+  ClipboardList, BarChart3, Settings, LogOut, Menu, X, Search, Bell, Scissors,Shirt, FileStack, Truck, PackageOpen, Layers } from 'lucide-react';
 import { useSesion } from '../lib/sesion';
 import Campana from './Campana';
 
@@ -28,6 +27,7 @@ const MENU: ItemMenu[] = [
   { a: '/bitacora', texto: 'Bitácora', icono: ClipboardList, permisos: ['bitacora.ver'] },
   { a: '/reportes', texto: 'Reportes', icono: BarChart3, permisos: ['reportes.generar'] },
   { a: '/papeles', texto: 'Papeles', icono: FileStack, permisos: ['catalogos.gestionar'] },
+  { a: '/materiales-impresion', texto: 'Materiales de impresión', icono: Layers, permisos: ['materiales.catalogo'] },
   { a: '/admin', texto: 'Administración', icono: Settings, permisos: ['usuarios.gestionar'] },
   { a: '/costureras', texto: 'Costureras', icono: Scissors, permisos: ['costureras.gestionar'] },
   { a: '/confeccion', texto: 'Confección textil', icono: Shirt, permisos: ['confeccion.ver'] },

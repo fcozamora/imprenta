@@ -421,7 +421,10 @@ export default function LineaTrabajo({
                   onChange={(e) => onCambio({ materialId: Number(e.target.value) })}
                 >
                   <option value="">Seleccione</option>
-                  {catalogos.materialesLatex.map((m) => (
+                  {(codigo === 'IMPRESION_DIGITAL'
+                    ? catalogos.materialesDigital
+                    : catalogos.materialesLatex
+                  ).map((m) => (
                     <option key={m.id} value={m.id}>{m.nombre}</option>
                   ))}
                 </select>
