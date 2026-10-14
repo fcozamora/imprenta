@@ -13,6 +13,9 @@ export default function DetalleCliente() {
   const { id } = useParams();
   const navegar = useNavigate();
   const { puede } = useSesion();
+  // Todos los hooks van antes de cualquier return: si uno queda despues,
+  // React cuenta distinto entre un dibujado y otro y la pantalla se cae.
+  const [editando, setEditando] = useState(false);
 
   const cliente = useQuery({
     queryKey: ['cliente', id],
@@ -38,9 +41,20 @@ export default function DetalleCliente() {
   }
 
   const c = cliente.data;
+  if (!c) {
+    return (
+      <div className="tarjeta grid place-items-center py-16 text-center">
+        <p className="font-medium text-slate-700">No se encontró el cliente</p>
+        <button onClick={() => navegar(-1)} className="boton-secundario mt-3">
+          <ArrowLeft className="h-4 w-4" />
+          Volver
+        </button>
+      </div>
+    );
+  }
+
   const lista = ordenes.data ?? [];
   const abiertas = lista.filter((o: any) => o.estado === 'ABIERTA').length;
-  const [editando, setEditando] = useState(false);
 
   return (
     <div className="mx-auto max-w-5xl space-y-4">
