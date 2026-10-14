@@ -214,3 +214,13 @@ INSERT INTO `puesto_permisos` (`puesto_id`, `permiso_codigo`)
 SELECT p.id, 'materiales.catalogo'
 FROM puestos p
 WHERE p.nombre IN ('Administrador', 'Gerente', 'Diseñador');
+
+-- Recepcion y ventas tambien avanzan etapas
+INSERT INTO `puesto_permisos` (`puesto_id`, `permiso_codigo`)
+SELECT p.id, 'etapas.avanzar'
+FROM puestos p
+WHERE p.nombre IN ('Recepcionista', 'Vendedor(a)')
+  AND NOT EXISTS (
+    SELECT 1 FROM puesto_permisos pp
+     WHERE pp.puesto_id = p.id AND pp.permiso_codigo = 'etapas.avanzar'
+  );
