@@ -59,6 +59,9 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       JWT_EXPIRA: 8h
       PASSWORD_RESET: ${PASSWORD_RESET}
+      # Las muestras van al volumen, no a la capa del contenedor: si no,
+      # se borran en cada reconstruccion.
+      CARPETA_ALMACEN: /app/almacen
       TZ: America/Costa_Rica
     volumes:
       - datos_almacen:/app/almacen

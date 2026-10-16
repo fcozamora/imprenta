@@ -69,6 +69,12 @@ rutasReportes.get('/lineas/:id/archivos', async (req, res, next) => {
 rutasReportes.get('/archivos/:id', async (req, res, next) => {
   try {
     const archivo = await archivos.obtenerRuta(Number(req.params.id));
+    if (!(await archivos.existeEnDisco(archivo.ruta))) {
+      throw new ErrorHttp(
+        404,
+        'La imagen quedó registrada pero el archivo ya no está en el servidor. Vuelva a subirla.'
+      );
+    }
     res.sendFile(path.join(archivos.CARPETA_SUBIDAS, archivo.ruta));
   } catch (error) {
     next(error);

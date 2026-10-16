@@ -164,13 +164,29 @@ export async function actualizar(
     ]
   );
 
-  // Activar o desactivar el color arrastra sus variantes: no tiene sentido
-  // dejar un intermedio vivo si el color ya no se usa.
-  if (datos.activo !== undefined && !papel.padre_id && papel.variantes > 0) {
-    await pool.query(`UPDATE tipos_papel SET activo = ? WHERE padre_id = ?`, [
-      datos.activo ? 1 : 0,
-      id,
-    ]);
+  if (datos.activo !== undefined) {
+    // Desactivar el color arrastra sus variantes: no tiene sentido dejar un
+    // intermedio vivo si el color ya no se usa.
+    if (!papel.padre_id && papel.variantes > 0) {
+      await pool.query(`UPDATE tipos_papel SET activo = ? WHERE padre_id = ?`, [
+        datos.activo ? 1 : 0,
+        id,
+      ]);
+    }
+
+    // Al revés, el color se ofrece en la orden mientras le quede al menos
+    // una variante activa.
+    if (papel.padre_id) {
+      await pool.query(
+        `UPDATE tipos_papel p
+            SET p.activo = (
+              SELECT MAX(h.activo) FROM (SELECT padre_id, activo FROM tipos_papel) h
+               WHERE h.padre_id = p.id
+            )
+          WHERE p.id = ?`,
+        [papel.padre_id]
+      );
+    }
   }
 
   return { mensaje: 'Papel actualizado' };

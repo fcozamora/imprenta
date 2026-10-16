@@ -1,8 +1,8 @@
-import { Fragment, useState } from 'react';
+import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   FileStack, Plus, LoaderCircle, X, Pencil, CircleSlash, CircleCheck, Star,
-  ArrowUpDown, History, TriangleAlert, Split, CornerDownRight,
+  ArrowUpDown, History, TriangleAlert, Split,
 } from 'lucide-react';
 import { api, mensajeDeError } from '../lib/api';
 import { useSesion } from '../lib/sesion';
@@ -28,11 +28,6 @@ interface Papel {
   usos: number;
 }
 
-interface Grupo {
-  padre: Papel;
-  hijas: Papel[];
-}
-
 const CATEGORIAS: Array<{ valor: Categoria; texto: string; clase: string }> = [
   { valor: 'QUIMICO', texto: 'Químico', clase: 'bg-violet-100 text-violet-700' },
   { valor: 'BOND', texto: 'Bond', clase: 'bg-sky-100 text-sky-700' },
@@ -49,16 +44,15 @@ function etiquetaCategoria(c: Categoria) {
   return CATEGORIAS.find((x) => x.valor === c) ?? CATEGORIAS[3];
 }
 
-/** Arma el arbol: cada color con sus variantes de bodega debajo. */
-function agrupar(papeles: Papel[]): Grupo[] {
-  const grupos = papeles
-    .filter((p) => p.padre_id === null)
-    .map((padre) => ({ padre, hijas: [] as Papel[] }));
-  const porId = new Map(grupos.map((g) => [g.padre.id, g]));
-  for (const p of papeles) {
-    if (p.padre_id !== null) porId.get(p.padre_id)?.hijas.push(p);
-  }
-  return grupos;
+/**
+ * Cada renglón de la tabla es un papel con su propia existencia, contado
+ * aparte. Un color ya separado no sale: lo que se lleva en bodega son sus
+ * dos variantes, cada una por su lado y sin sumarse. El color sigue
+ * existiendo detrás porque es lo que se escoge al crear la orden, pero
+ * aquí no se muestra ni se totaliza.
+ */
+function enInventario(papeles: Papel[]) {
+  return papeles.filter((p) => p.variantes < 2);
 }
 
 export default function Papeles() {
@@ -69,7 +63,8 @@ export default function Papeles() {
   const gestiona = puede('papeles.gestionar', 'catalogos.gestionar');
   const mueve = gestiona || puede('papeles.movimientos');
 
-  const [editando, setEditando] = useState<{ papel: Papel | null; padre?: Papel; variante?: Variante } | null>(null);
+  const [editando, setEditando] =
+    useState<{ papel: Papel | null; padre?: Papel; variante?: Variante } | null>(null);
   const [moviendo, setMoviendo] = useState<Papel | null>(null);
   const [historial, setHistorial] = useState<Papel | null>(null);
   const [filtro, setFiltro] = useState<Categoria | ''>('');
@@ -97,13 +92,12 @@ export default function Papeles() {
     onError: (e) => alert(mensajeDeError(e)),
   });
 
-  const grupos = agrupar(papeles);
-  const visibles = filtro ? grupos.filter((g) => g.padre.categoria === filtro) : grupos;
+  const porId = new Map(papeles.map((p) => [p.id, p]));
+  const inventario = enInventario(papeles);
+  const visibles = filtro ? inventario.filter((p) => p.categoria === filtro) : inventario;
 
-  // Solo las hojas llevan resmas: sumar tambien el color las contaria dos veces.
-  const hojas = papeles.filter((p) => p.variantes === 0);
-  const bajos = hojas.filter((p) => p.activo && p.bajo_minimo).length;
-  const totalResmas = hojas.reduce((s, p) => s + p.resmas, 0);
+  const bajos = inventario.filter((p) => p.activo && p.bajo_minimo).length;
+  const totalResmas = inventario.reduce((s, p) => s + p.resmas, 0);
 
   return (
     <div className="space-y-4">
@@ -172,169 +166,130 @@ export default function Papeles() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {visibles.map(({ padre, hijas }) => {
-                  const cat = etiquetaCategoria(padre.categoria);
-                  const partido = hijas.length > 0;
+                {visibles.map((p) => {
+                  const cat = etiquetaCategoria(p.categoria);
+                  const padre = p.padre_id ? porId.get(p.padre_id) : undefined;
+
+                  // Un color al que le falta una de las dos variantes.
                   const faltante: Variante | null =
-                    hijas.length === 1
-                      ? hijas[0].variante === 'INTERMEDIO'
+                    p.variantes === 1
+                      ? papeles.find((h) => h.padre_id === p.id)?.variante === 'INTERMEDIO'
                         ? 'FINAL'
                         : 'INTERMEDIO'
                       : null;
 
-                  return (
-                    <Fragment key={padre.id}>
-                      <tr
-                        className={`hover:bg-slate-50/70 ${!padre.activo ? 'opacity-50' : ''} ${
-                          padre.activo && !partido && padre.bajo_minimo ? 'bg-red-50/40' : ''
-                        }`}
-                      >
-                        <td className="px-4 py-3">
-                          <span className="font-medium text-slate-900">{padre.nombre}</span>
-                          {padre.es_original === 1 && (
-                            <span className="ml-2 inline-flex items-center gap-1 rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">
-                              <Star className="h-2.5 w-2.5" />
-                              original
-                            </span>
-                          )}
-                          {!padre.activo && (
-                            <span className="ml-2 rounded bg-slate-200 px-1.5 py-0.5 text-[10px] font-medium text-slate-600">
-                              inactivo
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3">
-                          <span className={`rounded px-2 py-0.5 text-xs font-medium ${cat.clase}`}>
-                            {cat.texto}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-right">
-                          {partido ? (
-                            <>
-                              <span className="font-semibold text-slate-900">
-                                {padre.resmas_variantes}
-                              </span>
-                              <span className="ml-1 text-xs text-slate-400">en total</span>
-                            </>
-                          ) : (
-                            <>
-                              <span className={`font-semibold ${padre.bajo_minimo ? 'text-red-600' : 'text-slate-900'}`}>
-                                {padre.resmas}
-                              </span>
-                              {padre.bajo_minimo === 1 && (
-                                <TriangleAlert className="ml-1 inline h-3.5 w-3.5 text-red-500" />
-                              )}
-                              {padre.minimo > 0 && (
-                                <span className="ml-1 text-xs text-slate-400">/ mín. {padre.minimo}</span>
-                              )}
-                            </>
-                          )}
-                        </td>
-                        <td className="px-4 py-3 text-right text-slate-500">{padre.usos}</td>
-                        {mueve && (
-                          <td className="px-4 py-3">
-                            <div className="flex justify-end gap-1">
-                              {!partido && (
-                                <>
-                                  <IconoAccion titulo="Actualizar existencia" onClick={() => setMoviendo(padre)}>
-                                    <ArrowUpDown className="h-4 w-4" />
-                                  </IconoAccion>
-                                  <IconoAccion titulo="Ver movimientos" onClick={() => setHistorial(padre)}>
-                                    <History className="h-4 w-4" />
-                                  </IconoAccion>
-                                </>
-                              )}
-                              {gestiona && (
-                                <>
-                                  {padre.categoria === 'QUIMICO' &&
-                                    padre.es_original !== 1 &&
-                                    !partido && (
-                                      <IconoAccion
-                                        titulo="Separar la existencia en intermedio y final"
-                                        onClick={() => {
-                                          if (
-                                            confirm(
-                                              `Se crearán dos renglones de bodega, "${padre.nombre} Intermedio" y "${padre.nombre} Final". ` +
-                                                `Las ${padre.resmas} resmas anotadas pasan al final. ` +
-                                                `Al crear la orden se seguirá viendo solo "${padre.nombre}".`
-                                            )
-                                          )
-                                            separar.mutate(padre.id);
-                                        }}
-                                      >
-                                        <Split className="h-4 w-4" />
-                                      </IconoAccion>
-                                    )}
-                                  {faltante && (
-                                    <IconoAccion
-                                      titulo={`Agregar la variante ${ROTULO_VARIANTE[faltante].toLowerCase()}`}
-                                      onClick={() => setEditando({ papel: null, padre, variante: faltante })}
-                                    >
-                                      <Plus className="h-4 w-4" />
-                                    </IconoAccion>
-                                  )}
-                                  <IconoAccion titulo="Editar" onClick={() => setEditando({ papel: padre })}>
-                                    <Pencil className="h-4 w-4" />
-                                  </IconoAccion>
-                                  <IconoAccion
-                                    titulo={padre.activo ? 'Desactivar' : 'Activar'}
-                                    onClick={() => cambiarEstado.mutate({ id: padre.id, activo: !padre.activo })}
-                                  >
-                                    {padre.activo ? <CircleSlash className="h-4 w-4" /> : <CircleCheck className="h-4 w-4" />}
-                                  </IconoAccion>
-                                </>
-                              )}
-                            </div>
-                          </td>
-                        )}
-                      </tr>
+                  const sePuedeSeparar =
+                    p.categoria === 'QUIMICO' &&
+                    p.padre_id === null &&
+                    p.es_original !== 1 &&
+                    p.variantes === 0;
 
-                      {hijas.map((h) => (
-                        <tr
-                          key={h.id}
-                          className={`hover:bg-slate-50 ${!h.activo ? 'opacity-50' : ''} ${
-                            h.activo && h.bajo_minimo ? 'bg-red-50/50' : 'bg-slate-50/40'
-                          }`}
-                        >
-                          <td className="py-2 pl-10 pr-4">
-                            <span className="inline-flex items-center gap-1.5 text-slate-600">
-                              <CornerDownRight className="h-3.5 w-3.5 text-slate-400" />
-                              {h.variante ? ROTULO_VARIANTE[h.variante] : h.nombre}
-                            </span>
-                          </td>
-                          <td className="px-4 py-2 text-xs text-slate-400">solo bodega</td>
-                          <td className="px-4 py-2 text-right">
-                            <span className={`font-semibold ${h.bajo_minimo ? 'text-red-600' : 'text-slate-900'}`}>
-                              {h.resmas}
-                            </span>
-                            {h.bajo_minimo === 1 && (
-                              <TriangleAlert className="ml-1 inline h-3.5 w-3.5 text-red-500" />
-                            )}
-                            {h.minimo > 0 && (
-                              <span className="ml-1 text-xs text-slate-400">/ mín. {h.minimo}</span>
-                            )}
-                          </td>
-                          <td className="px-4 py-2 text-right text-slate-300">—</td>
-                          {mueve && (
-                            <td className="px-4 py-2">
-                              <div className="flex justify-end gap-1">
-                                <IconoAccion titulo="Actualizar existencia" onClick={() => setMoviendo(h)}>
-                                  <ArrowUpDown className="h-4 w-4" />
-                                </IconoAccion>
-                                <IconoAccion titulo="Ver movimientos" onClick={() => setHistorial(h)}>
-                                  <History className="h-4 w-4" />
-                                </IconoAccion>
-                                {gestiona && (
-                                  <IconoAccion titulo="Editar" onClick={() => setEditando({ papel: h })}>
-                                    <Pencil className="h-4 w-4" />
+                  return (
+                    <tr
+                      key={p.id}
+                      className={`hover:bg-slate-50/70 ${!p.activo ? 'opacity-50' : ''} ${
+                        p.activo && p.bajo_minimo ? 'bg-red-50/40' : ''
+                      }`}
+                    >
+                      <td className="px-4 py-3">
+                        <span className="font-medium text-slate-900">{p.nombre}</span>
+                        {p.es_original === 1 && (
+                          <span className="ml-2 inline-flex items-center gap-1 rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">
+                            <Star className="h-2.5 w-2.5" />
+                            original
+                          </span>
+                        )}
+                        {!p.activo && (
+                          <span className="ml-2 rounded bg-slate-200 px-1.5 py-0.5 text-[10px] font-medium text-slate-600">
+                            inactivo
+                          </span>
+                        )}
+                        {faltante && (
+                          <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">
+                            le falta el {ROTULO_VARIANTE[faltante].toLowerCase()}
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`rounded px-2 py-0.5 text-xs font-medium ${cat.clase}`}>
+                          {cat.texto}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <span className={`font-semibold ${p.bajo_minimo ? 'text-red-600' : 'text-slate-900'}`}>
+                          {p.resmas}
+                        </span>
+                        {p.bajo_minimo === 1 && (
+                          <TriangleAlert className="ml-1 inline h-3.5 w-3.5 text-red-500" />
+                        )}
+                        {p.minimo > 0 && (
+                          <span className="ml-1 text-xs text-slate-400">/ mín. {p.minimo}</span>
+                        )}
+                      </td>
+                      <td
+                        className="px-4 py-3 text-right text-slate-500"
+                        title={
+                          padre
+                            ? `Órdenes que llevan ${padre.nombre}`
+                            : 'Órdenes que llevan este papel'
+                        }
+                      >
+                        {padre ? padre.usos : p.usos}
+                      </td>
+                      {mueve && (
+                        <td className="px-4 py-3">
+                          <div className="flex justify-end gap-1">
+                            <IconoAccion titulo="Actualizar existencia" onClick={() => setMoviendo(p)}>
+                              <ArrowUpDown className="h-4 w-4" />
+                            </IconoAccion>
+                            <IconoAccion titulo="Ver movimientos" onClick={() => setHistorial(p)}>
+                              <History className="h-4 w-4" />
+                            </IconoAccion>
+                            {gestiona && (
+                              <>
+                                {sePuedeSeparar && (
+                                  <IconoAccion
+                                    titulo="Separar la existencia en intermedio y final"
+                                    onClick={() => {
+                                      if (
+                                        confirm(
+                                          `"${p.nombre}" se reemplaza por dos papeles aparte: ` +
+                                            `"${p.nombre} Intermedio" y "${p.nombre} Final", cada uno con su propia existencia. ` +
+                                            `Las ${p.resmas} resmas anotadas pasan al final. ` +
+                                            `Al crear la orden se seguirá escogiendo solo "${p.nombre}".`
+                                        )
+                                      )
+                                        separar.mutate(p.id);
+                                    }}
+                                  >
+                                    <Split className="h-4 w-4" />
                                   </IconoAccion>
                                 )}
-                              </div>
-                            </td>
-                          )}
-                        </tr>
-                      ))}
-                    </Fragment>
+                                {faltante && (
+                                  <IconoAccion
+                                    titulo={`Agregar ${p.nombre} ${ROTULO_VARIANTE[faltante]}`}
+                                    onClick={() =>
+                                      setEditando({ papel: null, padre: p, variante: faltante })
+                                    }
+                                  >
+                                    <Plus className="h-4 w-4" />
+                                  </IconoAccion>
+                                )}
+                                <IconoAccion titulo="Editar" onClick={() => setEditando({ papel: p })}>
+                                  <Pencil className="h-4 w-4" />
+                                </IconoAccion>
+                                <IconoAccion
+                                  titulo={p.activo ? 'Desactivar' : 'Activar'}
+                                  onClick={() => cambiarEstado.mutate({ id: p.id, activo: !p.activo })}
+                                >
+                                  {p.activo ? <CircleSlash className="h-4 w-4" /> : <CircleCheck className="h-4 w-4" />}
+                                </IconoAccion>
+                              </>
+                            )}
+                          </div>
+                        </td>
+                      )}
+                    </tr>
                   );
                 })}
               </tbody>
@@ -349,9 +304,9 @@ export default function Papeles() {
           primera hoja de los talonarios con copias. Solo puede haber uno.
         </p>
         <p>
-          Los químicos separados llevan la existencia por <strong>intermedio</strong> y{' '}
-          <strong>final</strong>. Al crear la orden se escoge solo el color, sin distinguir cuál
-          de los dos se usará.
+          El intermedio y el final de un mismo color son papeles aparte, cada uno con su propia
+          existencia. Al crear la orden se escoge solo el color, sin distinguir cuál de los dos
+          se usará.
         </p>
       </div>
 
@@ -360,6 +315,10 @@ export default function Papeles() {
           papel={editando.papel}
           padre={editando.padre}
           variante={editando.variante}
+          colorDe={
+            editando.papel?.padre_id ? porId.get(editando.papel.padre_id) : undefined
+          }
+          onEditarColor={(color) => setEditando({ papel: color })}
           onCerrar={() => setEditando(null)}
           onGuardado={() => { setEditando(null); refrescar(); }}
         />
@@ -413,17 +372,18 @@ function Caja({
 }
 
 function ModalPapel({
-  papel, padre, variante, onCerrar, onGuardado,
+  papel, padre, variante, colorDe, onEditarColor, onCerrar, onGuardado,
 }: {
   papel: Papel | null;
   padre?: Papel;
   variante?: Variante;
+  colorDe?: Papel;
+  onEditarColor: (color: Papel) => void;
   onCerrar: () => void;
   onGuardado: () => void;
 }) {
-  // Una variante no escoge categoria ni puede ser el original: hereda el color.
+  // Una variante no escoge categoría ni puede ser el original: es del color.
   const esVariante = papel ? papel.padre_id !== null : !!padre;
-  const partido = (papel?.variantes ?? 0) > 0;
 
   const [form, setForm] = useState({
     nombre:
@@ -437,10 +397,7 @@ function ModalPapel({
 
   const guardar = useMutation({
     mutationFn: async () => {
-      const base = {
-        nombre: form.nombre.trim(),
-        minimo: Number(form.minimo) || 0,
-      };
+      const base = { nombre: form.nombre.trim(), minimo: Number(form.minimo) || 0 };
       if (papel) {
         return api.patch(`/admin/papeles/${papel.id}`, {
           ...base,
@@ -466,8 +423,10 @@ function ModalPapel({
   });
 
   const titulo = papel
-    ? esVariante ? 'Editar variante' : 'Editar papel'
-    : padre ? `Variante de ${padre.nombre}` : 'Nuevo papel';
+    ? 'Editar papel'
+    : padre && variante
+      ? `${padre.nombre} ${ROTULO_VARIANTE[variante]}`
+      : 'Nuevo papel';
 
   return (
     <Caja titulo={titulo} onCerrar={onCerrar}>
@@ -501,23 +460,14 @@ function ModalPapel({
           </div>
         )}
 
-        {!partido && (
-          <div>
-            <label className="etiqueta">Mínimo de alerta (resmas)</label>
-            <input type="number" min={0} className="campo" value={form.minimo}
-              onChange={(e) => setForm({ ...form, minimo: e.target.value })} />
-            <p className="mt-1 text-xs text-slate-500">
-              Cuando la existencia baje de aquí, la fila sale resaltada en rojo. En cero no avisa.
-            </p>
-          </div>
-        )}
-
-        {partido && (
-          <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
-            Este color lleva la existencia separada. Las resmas y el mínimo se manejan en el
-            intermedio y en el final, no aquí.
+        <div>
+          <label className="etiqueta">Mínimo de alerta (resmas)</label>
+          <input type="number" min={0} className="campo" value={form.minimo}
+            onChange={(e) => setForm({ ...form, minimo: e.target.value })} />
+          <p className="mt-1 text-xs text-slate-500">
+            Cuando la existencia baje de aquí, la fila sale resaltada en rojo. En cero no avisa.
           </p>
-        )}
+        </div>
 
         {!esVariante && (
           <label className="flex cursor-pointer items-start gap-2 rounded-lg bg-emerald-50 px-3 py-2
@@ -533,6 +483,20 @@ function ModalPapel({
               </span>
             </span>
           </label>
+        )}
+
+        {colorDe && (
+          <div className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
+            Al crear la orden este papel se escoge como{' '}
+            <strong className="text-slate-800">{colorDe.nombre}</strong>.
+            <button
+              type="button"
+              onClick={() => onEditarColor(colorDe)}
+              className="ml-1 font-medium text-marca-600 hover:underline"
+            >
+              Editar ese nombre
+            </button>
+          </div>
         )}
 
         {!papel && (
@@ -560,13 +524,6 @@ function ModalPapel({
       </div>
     </Caja>
   );
-}
-
-function nombreCompleto(papel: Papel) {
-  if (papel.padre_id && papel.variante) {
-    return `${papel.padre_nombre ?? papel.nombre} · ${ROTULO_VARIANTE[papel.variante]}`;
-  }
-  return papel.nombre;
 }
 
 function ModalMovimiento({
@@ -602,7 +559,7 @@ function ModalMovimiento({
   };
 
   return (
-    <Caja titulo={`Existencia de ${nombreCompleto(papel)}`} onCerrar={onCerrar}>
+    <Caja titulo={`Existencia de ${papel.nombre}`} onCerrar={onCerrar}>
       <div className="space-y-3">
         <p className="text-sm text-slate-500">
           Existencia actual: <strong className="text-slate-900">{papel.resmas} resmas</strong>
@@ -667,7 +624,7 @@ function ModalHistorial({ papel, onCerrar }: { papel: Papel; onCerrar: () => voi
   });
 
   return (
-    <Caja titulo={`Movimientos de ${nombreCompleto(papel)}`} onCerrar={onCerrar}>
+    <Caja titulo={`Movimientos de ${papel.nombre}`} onCerrar={onCerrar}>
       {isLoading ? (
         <div className="grid place-items-center py-8">
           <LoaderCircle className="h-5 w-5 animate-spin text-slate-400" />

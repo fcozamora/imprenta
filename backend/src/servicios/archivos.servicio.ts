@@ -3,10 +3,34 @@ import path from 'node:path';
 import { pool } from '../db/pool.js';
 import { ErrorHttp } from '../util/errores.js';
 
-export const CARPETA_SUBIDAS = path.resolve(process.cwd(), '../almacen/muestras');
+/**
+ * Dónde quedan las muestras.
+ *
+ * En desarrollo el servidor corre desde backend/, así que la carpeta del
+ * proyecto queda un nivel arriba. Dentro de Docker el servidor corre desde
+ * /app y ese "un nivel arriba" daba /almacen, que no es el disco montado
+ * sino la capa de escritura del contenedor: las fotos se borraban en cada
+ * reconstruccion. Por eso la ruta se fija con CARPETA_ALMACEN, que en
+ * docker-compose apunta al volumen /app/almacen.
+ */
+const CARPETA_ALMACEN =
+  process.env.CARPETA_ALMACEN?.trim() || path.resolve(process.cwd(), '../almacen');
+
+export const CARPETA_SUBIDAS = path.resolve(CARPETA_ALMACEN, 'muestras');
 
 export async function prepararCarpeta() {
   await fs.mkdir(CARPETA_SUBIDAS, { recursive: true });
+  console.log(`Muestras guardadas en ${CARPETA_SUBIDAS}`);
+}
+
+/** Avisa claro cuando la foto quedó registrada pero el archivo ya no está. */
+export async function existeEnDisco(ruta: string) {
+  try {
+    await fs.access(path.join(CARPETA_SUBIDAS, ruta));
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export async function registrar(datos: {
