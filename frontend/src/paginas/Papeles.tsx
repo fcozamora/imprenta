@@ -36,7 +36,10 @@ function etiquetaCategoria(c: Categoria) {
 export default function Papeles() {
   const { puede } = useSesion();
   const cliente = useQueryClient();
+  // Editar el catalogo y mover existencias son cosas distintas: el
+  // prencista registra entradas y salidas pero no crea ni borra papeles.
   const gestiona = puede('catalogos.gestionar');
+  const mueve = gestiona || puede('papeles.movimientos');
 
   const [editando, setEditando] = useState<Papel | 'nuevo' | null>(null);
   const [moviendo, setMoviendo] = useState<Papel | null>(null);
@@ -127,7 +130,7 @@ export default function Papeles() {
                   <th className="px-4 py-3">Categoría</th>
                   <th className="px-4 py-3 text-right">Resmas</th>
                   <th className="px-4 py-3 text-right">Usos</th>
-                  {gestiona && <th className="px-4 py-3 text-right">Acciones</th>}
+                  {mueve && <th className="px-4 py-3 text-right">Acciones</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -171,7 +174,7 @@ export default function Papeles() {
                         )}
                       </td>
                       <td className="px-4 py-3 text-right text-slate-500">{p.usos}</td>
-                      {gestiona && (
+                      {mueve && (
                         <td className="px-4 py-3">
                           <div className="flex justify-end gap-1">
                             <button onClick={() => setMoviendo(p)} title="Actualizar existencia"
@@ -182,17 +185,21 @@ export default function Papeles() {
                               className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700">
                               <History className="h-4 w-4" />
                             </button>
-                            <button onClick={() => setEditando(p)} title="Editar"
-                              className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700">
-                              <Pencil className="h-4 w-4" />
-                            </button>
-                            <button
-                              onClick={() => cambiarEstado.mutate({ id: p.id, activo: !p.activo })}
-                              title={p.activo ? 'Desactivar' : 'Activar'}
-                              className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
-                            >
-                              {p.activo ? <CircleSlash className="h-4 w-4" /> : <CircleCheck className="h-4 w-4" />}
-                            </button>
+                            {gestiona && (
+                              <>
+                                <button onClick={() => setEditando(p)} title="Editar"
+                                  className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700">
+                                  <Pencil className="h-4 w-4" />
+                                </button>
+                                <button
+                                  onClick={() => cambiarEstado.mutate({ id: p.id, activo: !p.activo })}
+                                  title={p.activo ? 'Desactivar' : 'Activar'}
+                                  className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+                                >
+                                  {p.activo ? <CircleSlash className="h-4 w-4" /> : <CircleCheck className="h-4 w-4" />}
+                                </button>
+                              </>
+                            )}
                           </div>
                         </td>
                       )}

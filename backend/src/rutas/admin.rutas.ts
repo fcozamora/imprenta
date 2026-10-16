@@ -216,7 +216,7 @@ rutasAdmin.get('/papeles/:id/movimientos', async (req, res, next) => {
 
 rutasAdmin.post(
   '/papeles/:id/movimiento',
-  requierePermiso('catalogos.gestionar'),
+  requierePermiso('papeles.movimientos'),
   async (req, res, next) => {
     try {
       const datos = z

@@ -27,7 +27,7 @@ const MENU: ItemMenu[] = [
   { a: '/notificaciones', texto: 'Notificaciones', icono: Bell },
   { a: '/bitacora', texto: 'Bitácora', icono: ClipboardList, permisos: ['bitacora.ver'] },
   { a: '/reportes', texto: 'Reportes', icono: BarChart3, permisos: ['reportes.generar'] },
-  { a: '/papeles', texto: 'Papeles', icono: FileStack, permisos: ['catalogos.gestionar'] },
+  { a: '/papeles', texto: 'Papeles', icono: FileStack, permisos: ['catalogos.gestionar', 'papeles.movimientos'] },
   { a: '/materiales-impresion', texto: 'Materiales de impresión', icono: Layers, permisos: ['materiales.catalogo'] },
   { a: '/admin', texto: 'Administración', icono: Settings, permisos: ['usuarios.gestionar'] },
   { a: '/costureras', texto: 'Costureras', icono: Scissors, permisos: ['costureras.gestionar'] },
