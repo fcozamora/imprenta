@@ -253,6 +253,27 @@ rutasOrdenes.patch(
   }
 );
 
+rutasOrdenes.patch(
+  '/lineas/:id/costurera',
+  requierePermiso('ordenes.editar', 'etapas.avanzar'),
+  async (req, res, next) => {
+    try {
+      const datos = z
+        .object({
+          costureraId: z.number().int().positive().optional().nullable(),
+          sinConfeccion: z.boolean().optional(),
+        })
+        .refine((d) => d.sinConfeccion === true || d.costureraId != null, {
+          message: 'Indique la costurera o marque que no lleva confección',
+        })
+        .parse(req.body);
+      res.json(await ordenes.cambiarCosturera(Number(req.params.id), datos));
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
 rutasOrdenes.post('/lineas/:id/tomar', requierePermiso('ordenes.tomar'), async (req, res, next) => {
   try {
     res.json(await ordenes.tomarLinea(Number(req.params.id), req.usuario!.id));

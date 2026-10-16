@@ -718,3 +718,53 @@ export async function fijarPrecio(lineaId: number, precio: number | null) {
   );
   return (filas as any[])[0];
 }
+
+
+/**
+ * Cambia la costurera de un trabajo textil ya enviado a confeccion.
+ * A veces el trabajo se reparte distinto despues de haberlo asignado.
+ */
+export async function cambiarCosturera(
+  lineaId: number,
+  datos: { costureraId?: number | null; sinConfeccion?: boolean }
+) {
+  const [filas] = await pool.query(
+    `SELECT dt.linea_id, tt.codigo AS tipo
+       FROM detalle_textil dt
+       JOIN orden_lineas ol ON ol.id = dt.linea_id
+       JOIN tipos_trabajo tt ON tt.id = ol.tipo_trabajo_id
+      WHERE dt.linea_id = ?`,
+    [lineaId]
+  );
+  if (!(filas as any[]).length) {
+    throw new ErrorHttp(404, 'Ese trabajo no es textil o no existe');
+  }
+
+  if (datos.sinConfeccion) {
+    await pool.query(
+      `UPDATE detalle_textil SET costurera_id = NULL, sin_confeccion = 1 WHERE linea_id = ?`,
+      [lineaId]
+    );
+  } else {
+    const [existe] = await pool.query(
+      `SELECT id FROM costureras WHERE id = ? AND activo = 1`,
+      [datos.costureraId]
+    );
+    if (!(existe as any[]).length) {
+      throw new ErrorHttp(400, 'La costurera indicada no existe o está inactiva');
+    }
+    await pool.query(
+      `UPDATE detalle_textil SET costurera_id = ?, sin_confeccion = 0 WHERE linea_id = ?`,
+      [datos.costureraId, lineaId]
+    );
+  }
+
+  const [resultado] = await pool.query(
+    `SELECT dt.costurera_id, dt.sin_confeccion, c.nombre AS costurera
+       FROM detalle_textil dt
+       LEFT JOIN costureras c ON c.id = dt.costurera_id
+      WHERE dt.linea_id = ?`,
+    [lineaId]
+  );
+  return (resultado as any[])[0];
+}

@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { api, mensajeDeError } from '../lib/api';
 import { useSesion } from '../lib/sesion';
+import { useCatalogos } from '../lib/consultas';
 import { useState } from 'react';
 import { fecha, fechaHora, numero, enlaceWhatsapp } from '../lib/formato';
 import BarraEtapas from '../componentes/BarraEtapas';
@@ -226,6 +227,16 @@ export default function DetalleOrden() {
               sinConfeccion={linea.detalle?.sin_confeccion === 1}
             />
           </div>
+
+          {linea.tipo_codigo === 'TEXTIL' &&
+            (puede('ordenes.editar') || puede('etapas.avanzar')) && (
+              <CambiarCosturera
+                lineaId={linea.id}
+                costureraId={linea.detalle?.costurera_id ?? null}
+                costurera={linea.detalle?.costurera ?? null}
+                sinConfeccion={linea.detalle?.sin_confeccion === 1}
+              />
+            )}
 
           <div className="grid gap-4 sm:grid-cols-2">
             {/* Especificaciones */}
@@ -464,5 +475,95 @@ function PrecioLinea({ lineaId, precio }: { lineaId: number; precio: string | nu
         ? 'Sin precio'
         : `₡${Number(precio).toLocaleString('es-CR', { minimumFractionDigits: 2 })}`}
     </button>
+  );
+}
+
+
+/**
+ * Cambiar a que costurera se le mando un trabajo textil. Se asigna al pasar
+ * a Sublimacion, pero a veces el trabajo se reparte distinto despues.
+ */
+function CambiarCosturera({
+  lineaId, costureraId, costurera, sinConfeccion,
+}: {
+  lineaId: number;
+  costureraId: number | null;
+  costurera: string | null;
+  sinConfeccion: boolean;
+}) {
+  const clienteQuery = useQueryClient();
+  const { data: catalogos } = useCatalogos();
+  const [abierto, setAbierto] = useState(false);
+  const [eleccion, setEleccion] = useState<string>(
+    sinConfeccion ? 'sin' : costureraId ? String(costureraId) : ''
+  );
+
+  const guardar = useMutation({
+    mutationFn: () =>
+      api.patch(`/lineas/${lineaId}/costurera`,
+        eleccion === 'sin'
+          ? { sinConfeccion: true }
+          : { costureraId: Number(eleccion) }),
+    onSuccess: () => {
+      setAbierto(false);
+      clienteQuery.invalidateQueries({ queryKey: ['orden'] });
+      clienteQuery.invalidateQueries({ queryKey: ['confeccion'] });
+    },
+    onError: (e) => alert(mensajeDeError(e)),
+  });
+
+  const actual = sinConfeccion
+    ? 'N/A — el cliente confecciona'
+    : (costurera ?? 'Sin asignar');
+
+  return (
+    <div className="flex flex-wrap items-center gap-3 rounded-lg bg-slate-50 px-3 py-2 ring-1 ring-slate-200">
+      <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+        Confección
+      </span>
+
+      {abierto ? (
+        <>
+          <select
+            className="campo w-auto py-1.5 text-sm"
+            value={eleccion}
+            onChange={(e) => setEleccion(e.target.value)}
+          >
+            <option value="">Seleccione</option>
+            {(catalogos?.costureras ?? []).map((c) => (
+              <option key={c.id} value={c.id}>{c.nombre}</option>
+            ))}
+            <option value="sin">No lleva confección</option>
+          </select>
+          <button
+            onClick={() => guardar.mutate()}
+            disabled={guardar.isPending || eleccion === ''}
+            className="boton-primario py-1.5 px-3 text-xs"
+          >
+            {guardar.isPending && <LoaderCircle className="h-3.5 w-3.5 animate-spin" />}
+            Guardar
+          </button>
+          <button
+            onClick={() => {
+              setEleccion(sinConfeccion ? 'sin' : costureraId ? String(costureraId) : '');
+              setAbierto(false);
+            }}
+            className="text-xs text-slate-500 hover:text-slate-700"
+          >
+            Cancelar
+          </button>
+        </>
+      ) : (
+        <>
+          <span className="text-sm font-medium text-slate-800">{actual}</span>
+          <button
+            onClick={() => setAbierto(true)}
+            className="ml-auto text-xs font-medium text-marca-700 hover:text-marca-800"
+          >
+            Cambiar
+          </button>
+        </>
+      )}
+    </div>
   );
 }
