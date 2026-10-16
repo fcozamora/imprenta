@@ -1,14 +1,15 @@
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   FileStack, Plus, LoaderCircle, X, Pencil, CircleSlash, CircleCheck, Star,
-  ArrowUpDown, History, TriangleAlert,
+  ArrowUpDown, History, TriangleAlert, Split, CornerDownRight,
 } from 'lucide-react';
 import { api, mensajeDeError } from '../lib/api';
 import { useSesion } from '../lib/sesion';
 import { fechaHora } from '../lib/formato';
 
 type Categoria = 'BOND' | 'BRISTOL' | 'QUIMICO' | 'ESPECIAL';
+type Variante = 'INTERMEDIO' | 'FINAL';
 
 interface Papel {
   id: number;
@@ -16,10 +17,20 @@ interface Papel {
   categoria: Categoria;
   es_original: number;
   activo: number;
+  padre_id: number | null;
+  variante: Variante | null;
+  padre_nombre: string | null;
+  variantes: number;
+  resmas_variantes: number;
   resmas: number;
   minimo: number;
   bajo_minimo: number;
   usos: number;
+}
+
+interface Grupo {
+  padre: Papel;
+  hijas: Papel[];
 }
 
 const CATEGORIAS: Array<{ valor: Categoria; texto: string; clase: string }> = [
@@ -29,19 +40,36 @@ const CATEGORIAS: Array<{ valor: Categoria; texto: string; clase: string }> = [
   { valor: 'ESPECIAL', texto: 'Especial', clase: 'bg-slate-100 text-slate-700' },
 ];
 
+const ROTULO_VARIANTE: Record<Variante, string> = {
+  INTERMEDIO: 'Intermedio',
+  FINAL: 'Final',
+};
+
 function etiquetaCategoria(c: Categoria) {
   return CATEGORIAS.find((x) => x.valor === c) ?? CATEGORIAS[3];
+}
+
+/** Arma el arbol: cada color con sus variantes de bodega debajo. */
+function agrupar(papeles: Papel[]): Grupo[] {
+  const grupos = papeles
+    .filter((p) => p.padre_id === null)
+    .map((padre) => ({ padre, hijas: [] as Papel[] }));
+  const porId = new Map(grupos.map((g) => [g.padre.id, g]));
+  for (const p of papeles) {
+    if (p.padre_id !== null) porId.get(p.padre_id)?.hijas.push(p);
+  }
+  return grupos;
 }
 
 export default function Papeles() {
   const { puede } = useSesion();
   const cliente = useQueryClient();
-  // Editar el catalogo y mover existencias son cosas distintas: el
-  // prencista registra entradas y salidas pero no crea ni borra papeles.
-  const gestiona = puede('catalogos.gestionar');
+  // Administrar el inventario y mover existencias son cosas distintas:
+  // quien solo registra entradas y salidas no crea ni desactiva papeles.
+  const gestiona = puede('papeles.gestionar', 'catalogos.gestionar');
   const mueve = gestiona || puede('papeles.movimientos');
 
-  const [editando, setEditando] = useState<Papel | 'nuevo' | null>(null);
+  const [editando, setEditando] = useState<{ papel: Papel | null; padre?: Papel; variante?: Variante } | null>(null);
   const [moviendo, setMoviendo] = useState<Papel | null>(null);
   const [historial, setHistorial] = useState<Papel | null>(null);
   const [filtro, setFiltro] = useState<Categoria | ''>('');
@@ -51,6 +79,11 @@ export default function Papeles() {
     queryFn: async () => (await api.get<Papel[]>('/admin/papeles')).data,
   });
 
+  function refrescar() {
+    cliente.invalidateQueries({ queryKey: ['papeles'] });
+    cliente.invalidateQueries({ queryKey: ['catalogos'] });
+  }
+
   const cambiarEstado = useMutation({
     mutationFn: ({ id, activo }: { id: number; activo: boolean }) =>
       api.patch(`/admin/papeles/${id}`, { activo }),
@@ -58,14 +91,19 @@ export default function Papeles() {
     onError: (e) => alert(mensajeDeError(e)),
   });
 
-  function refrescar() {
-    cliente.invalidateQueries({ queryKey: ['papeles'] });
-    cliente.invalidateQueries({ queryKey: ['catalogos'] });
-  }
+  const separar = useMutation({
+    mutationFn: (id: number) => api.post(`/admin/papeles/${id}/separar`),
+    onSuccess: refrescar,
+    onError: (e) => alert(mensajeDeError(e)),
+  });
 
-  const visibles = filtro ? papeles.filter((p) => p.categoria === filtro) : papeles;
-  const bajos = papeles.filter((p) => p.activo && p.bajo_minimo).length;
-  const totalResmas = papeles.reduce((s, p) => s + p.resmas, 0);
+  const grupos = agrupar(papeles);
+  const visibles = filtro ? grupos.filter((g) => g.padre.categoria === filtro) : grupos;
+
+  // Solo las hojas llevan resmas: sumar tambien el color las contaria dos veces.
+  const hojas = papeles.filter((p) => p.variantes === 0);
+  const bajos = hojas.filter((p) => p.activo && p.bajo_minimo).length;
+  const totalResmas = hojas.reduce((s, p) => s + p.resmas, 0);
 
   return (
     <div className="space-y-4">
@@ -78,7 +116,7 @@ export default function Papeles() {
           </p>
         </div>
         {gestiona && (
-          <button onClick={() => setEditando('nuevo')} className="boton-primario">
+          <button onClick={() => setEditando({ papel: null })} className="boton-primario">
             <Plus className="h-4 w-4" />
             Agregar papel
           </button>
@@ -134,76 +172,169 @@ export default function Papeles() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {visibles.map((p) => {
-                  const cat = etiquetaCategoria(p.categoria);
+                {visibles.map(({ padre, hijas }) => {
+                  const cat = etiquetaCategoria(padre.categoria);
+                  const partido = hijas.length > 0;
+                  const faltante: Variante | null =
+                    hijas.length === 1
+                      ? hijas[0].variante === 'INTERMEDIO'
+                        ? 'FINAL'
+                        : 'INTERMEDIO'
+                      : null;
+
                   return (
-                    <tr
-                      key={p.id}
-                      className={`hover:bg-slate-50/70 ${!p.activo ? 'opacity-50' : ''} ${
-                        p.activo && p.bajo_minimo ? 'bg-red-50/40' : ''
-                      }`}
-                    >
-                      <td className="px-4 py-3">
-                        <span className="font-medium text-slate-900">{p.nombre}</span>
-                        {p.es_original === 1 && (
-                          <span className="ml-2 inline-flex items-center gap-1 rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">
-                            <Star className="h-2.5 w-2.5" />
-                            original
-                          </span>
-                        )}
-                        {!p.activo && (
-                          <span className="ml-2 rounded bg-slate-200 px-1.5 py-0.5 text-[10px] font-medium text-slate-600">
-                            inactivo
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className={`rounded px-2 py-0.5 text-xs font-medium ${cat.clase}`}>
-                          {cat.texto}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <span className={`font-semibold ${p.bajo_minimo ? 'text-red-600' : 'text-slate-900'}`}>
-                          {p.resmas}
-                        </span>
-                        {p.bajo_minimo === 1 && (
-                          <TriangleAlert className="ml-1 inline h-3.5 w-3.5 text-red-500" />
-                        )}
-                        {p.minimo > 0 && (
-                          <span className="ml-1 text-xs text-slate-400">/ mín. {p.minimo}</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-right text-slate-500">{p.usos}</td>
-                      {mueve && (
+                    <Fragment key={padre.id}>
+                      <tr
+                        className={`hover:bg-slate-50/70 ${!padre.activo ? 'opacity-50' : ''} ${
+                          padre.activo && !partido && padre.bajo_minimo ? 'bg-red-50/40' : ''
+                        }`}
+                      >
                         <td className="px-4 py-3">
-                          <div className="flex justify-end gap-1">
-                            <button onClick={() => setMoviendo(p)} title="Actualizar existencia"
-                              className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700">
-                              <ArrowUpDown className="h-4 w-4" />
-                            </button>
-                            <button onClick={() => setHistorial(p)} title="Ver movimientos"
-                              className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700">
-                              <History className="h-4 w-4" />
-                            </button>
-                            {gestiona && (
-                              <>
-                                <button onClick={() => setEditando(p)} title="Editar"
-                                  className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700">
-                                  <Pencil className="h-4 w-4" />
-                                </button>
-                                <button
-                                  onClick={() => cambiarEstado.mutate({ id: p.id, activo: !p.activo })}
-                                  title={p.activo ? 'Desactivar' : 'Activar'}
-                                  className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
-                                >
-                                  {p.activo ? <CircleSlash className="h-4 w-4" /> : <CircleCheck className="h-4 w-4" />}
-                                </button>
-                              </>
-                            )}
-                          </div>
+                          <span className="font-medium text-slate-900">{padre.nombre}</span>
+                          {padre.es_original === 1 && (
+                            <span className="ml-2 inline-flex items-center gap-1 rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">
+                              <Star className="h-2.5 w-2.5" />
+                              original
+                            </span>
+                          )}
+                          {!padre.activo && (
+                            <span className="ml-2 rounded bg-slate-200 px-1.5 py-0.5 text-[10px] font-medium text-slate-600">
+                              inactivo
+                            </span>
+                          )}
                         </td>
-                      )}
-                    </tr>
+                        <td className="px-4 py-3">
+                          <span className={`rounded px-2 py-0.5 text-xs font-medium ${cat.clase}`}>
+                            {cat.texto}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          {partido ? (
+                            <>
+                              <span className="font-semibold text-slate-900">
+                                {padre.resmas_variantes}
+                              </span>
+                              <span className="ml-1 text-xs text-slate-400">en total</span>
+                            </>
+                          ) : (
+                            <>
+                              <span className={`font-semibold ${padre.bajo_minimo ? 'text-red-600' : 'text-slate-900'}`}>
+                                {padre.resmas}
+                              </span>
+                              {padre.bajo_minimo === 1 && (
+                                <TriangleAlert className="ml-1 inline h-3.5 w-3.5 text-red-500" />
+                              )}
+                              {padre.minimo > 0 && (
+                                <span className="ml-1 text-xs text-slate-400">/ mín. {padre.minimo}</span>
+                              )}
+                            </>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-right text-slate-500">{padre.usos}</td>
+                        {mueve && (
+                          <td className="px-4 py-3">
+                            <div className="flex justify-end gap-1">
+                              {!partido && (
+                                <>
+                                  <IconoAccion titulo="Actualizar existencia" onClick={() => setMoviendo(padre)}>
+                                    <ArrowUpDown className="h-4 w-4" />
+                                  </IconoAccion>
+                                  <IconoAccion titulo="Ver movimientos" onClick={() => setHistorial(padre)}>
+                                    <History className="h-4 w-4" />
+                                  </IconoAccion>
+                                </>
+                              )}
+                              {gestiona && (
+                                <>
+                                  {padre.categoria === 'QUIMICO' &&
+                                    padre.es_original !== 1 &&
+                                    !partido && (
+                                      <IconoAccion
+                                        titulo="Separar la existencia en intermedio y final"
+                                        onClick={() => {
+                                          if (
+                                            confirm(
+                                              `Se crearán dos renglones de bodega, "${padre.nombre} Intermedio" y "${padre.nombre} Final". ` +
+                                                `Las ${padre.resmas} resmas anotadas pasan al final. ` +
+                                                `Al crear la orden se seguirá viendo solo "${padre.nombre}".`
+                                            )
+                                          )
+                                            separar.mutate(padre.id);
+                                        }}
+                                      >
+                                        <Split className="h-4 w-4" />
+                                      </IconoAccion>
+                                    )}
+                                  {faltante && (
+                                    <IconoAccion
+                                      titulo={`Agregar la variante ${ROTULO_VARIANTE[faltante].toLowerCase()}`}
+                                      onClick={() => setEditando({ papel: null, padre, variante: faltante })}
+                                    >
+                                      <Plus className="h-4 w-4" />
+                                    </IconoAccion>
+                                  )}
+                                  <IconoAccion titulo="Editar" onClick={() => setEditando({ papel: padre })}>
+                                    <Pencil className="h-4 w-4" />
+                                  </IconoAccion>
+                                  <IconoAccion
+                                    titulo={padre.activo ? 'Desactivar' : 'Activar'}
+                                    onClick={() => cambiarEstado.mutate({ id: padre.id, activo: !padre.activo })}
+                                  >
+                                    {padre.activo ? <CircleSlash className="h-4 w-4" /> : <CircleCheck className="h-4 w-4" />}
+                                  </IconoAccion>
+                                </>
+                              )}
+                            </div>
+                          </td>
+                        )}
+                      </tr>
+
+                      {hijas.map((h) => (
+                        <tr
+                          key={h.id}
+                          className={`hover:bg-slate-50 ${!h.activo ? 'opacity-50' : ''} ${
+                            h.activo && h.bajo_minimo ? 'bg-red-50/50' : 'bg-slate-50/40'
+                          }`}
+                        >
+                          <td className="py-2 pl-10 pr-4">
+                            <span className="inline-flex items-center gap-1.5 text-slate-600">
+                              <CornerDownRight className="h-3.5 w-3.5 text-slate-400" />
+                              {h.variante ? ROTULO_VARIANTE[h.variante] : h.nombre}
+                            </span>
+                          </td>
+                          <td className="px-4 py-2 text-xs text-slate-400">solo bodega</td>
+                          <td className="px-4 py-2 text-right">
+                            <span className={`font-semibold ${h.bajo_minimo ? 'text-red-600' : 'text-slate-900'}`}>
+                              {h.resmas}
+                            </span>
+                            {h.bajo_minimo === 1 && (
+                              <TriangleAlert className="ml-1 inline h-3.5 w-3.5 text-red-500" />
+                            )}
+                            {h.minimo > 0 && (
+                              <span className="ml-1 text-xs text-slate-400">/ mín. {h.minimo}</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-2 text-right text-slate-300">—</td>
+                          {mueve && (
+                            <td className="px-4 py-2">
+                              <div className="flex justify-end gap-1">
+                                <IconoAccion titulo="Actualizar existencia" onClick={() => setMoviendo(h)}>
+                                  <ArrowUpDown className="h-4 w-4" />
+                                </IconoAccion>
+                                <IconoAccion titulo="Ver movimientos" onClick={() => setHistorial(h)}>
+                                  <History className="h-4 w-4" />
+                                </IconoAccion>
+                                {gestiona && (
+                                  <IconoAccion titulo="Editar" onClick={() => setEditando({ papel: h })}>
+                                    <Pencil className="h-4 w-4" />
+                                  </IconoAccion>
+                                )}
+                              </div>
+                            </td>
+                          )}
+                        </tr>
+                      ))}
+                    </Fragment>
                   );
                 })}
               </tbody>
@@ -212,14 +343,23 @@ export default function Papeles() {
         </div>
       )}
 
-      <p className="text-xs text-slate-500">
-        El papel marcado como <strong>original</strong> es el que se asigna automáticamente a la
-        primera hoja de los talonarios con copias. Solo puede haber uno.
-      </p>
+      <div className="space-y-1 text-xs text-slate-500">
+        <p>
+          El papel marcado como <strong>original</strong> es el que se asigna automáticamente a la
+          primera hoja de los talonarios con copias. Solo puede haber uno.
+        </p>
+        <p>
+          Los químicos separados llevan la existencia por <strong>intermedio</strong> y{' '}
+          <strong>final</strong>. Al crear la orden se escoge solo el color, sin distinguir cuál
+          de los dos se usará.
+        </p>
+      </div>
 
       {editando && (
         <ModalPapel
-          papel={editando === 'nuevo' ? null : editando}
+          papel={editando.papel}
+          padre={editando.padre}
+          variante={editando.variante}
           onCerrar={() => setEditando(null)}
           onGuardado={() => { setEditando(null); refrescar(); }}
         />
@@ -233,6 +373,22 @@ export default function Papeles() {
       )}
       {historial && <ModalHistorial papel={historial} onCerrar={() => setHistorial(null)} />}
     </div>
+  );
+}
+
+function IconoAccion({
+  titulo, onClick, children,
+}: {
+  titulo: string; onClick: () => void; children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      title={titulo}
+      className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+    >
+      {children}
+    </button>
   );
 }
 
@@ -257,35 +413,64 @@ function Caja({
 }
 
 function ModalPapel({
-  papel, onCerrar, onGuardado,
+  papel, padre, variante, onCerrar, onGuardado,
 }: {
-  papel: Papel | null; onCerrar: () => void; onGuardado: () => void;
+  papel: Papel | null;
+  padre?: Papel;
+  variante?: Variante;
+  onCerrar: () => void;
+  onGuardado: () => void;
 }) {
+  // Una variante no escoge categoria ni puede ser el original: hereda el color.
+  const esVariante = papel ? papel.padre_id !== null : !!padre;
+  const partido = (papel?.variantes ?? 0) > 0;
+
   const [form, setForm] = useState({
-    nombre: papel?.nombre ?? '',
+    nombre:
+      papel?.nombre ??
+      (padre && variante ? `${padre.nombre} ${ROTULO_VARIANTE[variante]}` : ''),
     categoria: (papel?.categoria ?? 'QUIMICO') as Categoria,
     esOriginal: papel?.es_original === 1,
-    minimo: String(papel?.minimo ?? 0),
+    minimo: String(papel?.minimo ?? padre?.minimo ?? 0),
   });
   const [error, setError] = useState('');
 
   const guardar = useMutation({
     mutationFn: async () => {
-      const cuerpo = {
+      const base = {
         nombre: form.nombre.trim(),
-        categoria: form.categoria,
-        esOriginal: form.esOriginal,
         minimo: Number(form.minimo) || 0,
       };
-      if (papel) return api.patch(`/admin/papeles/${papel.id}`, cuerpo);
-      return api.post('/admin/papeles', cuerpo);
+      if (papel) {
+        return api.patch(`/admin/papeles/${papel.id}`, {
+          ...base,
+          ...(esVariante ? {} : { categoria: form.categoria, esOriginal: form.esOriginal }),
+        });
+      }
+      if (padre && variante) {
+        return api.post('/admin/papeles', {
+          ...base,
+          categoria: 'QUIMICO',
+          padreId: padre.id,
+          variante,
+        });
+      }
+      return api.post('/admin/papeles', {
+        ...base,
+        categoria: form.categoria,
+        esOriginal: form.esOriginal,
+      });
     },
     onSuccess: onGuardado,
     onError: (e) => setError(mensajeDeError(e)),
   });
 
+  const titulo = papel
+    ? esVariante ? 'Editar variante' : 'Editar papel'
+    : padre ? `Variante de ${padre.nombre}` : 'Nuevo papel';
+
   return (
-    <Caja titulo={papel ? 'Editar papel' : 'Nuevo papel'} onCerrar={onCerrar}>
+    <Caja titulo={titulo} onCerrar={onCerrar}>
       <div className="space-y-3">
         <div>
           <label className="etiqueta">Nombre <span className="text-red-500">*</span></label>
@@ -294,48 +479,61 @@ function ModalPapel({
             onChange={(e) => setForm({ ...form, nombre: e.target.value })} />
         </div>
 
-        <div>
-          <label className="etiqueta">Categoría <span className="text-red-500">*</span></label>
-          <div className="flex flex-wrap gap-2">
-            {CATEGORIAS.map((c) => (
-              <button key={c.valor} type="button"
-                onClick={() => setForm({ ...form, categoria: c.valor })}
-                className={`rounded-lg px-3 py-2 text-sm font-medium transition-all active:scale-95 ${
-                  form.categoria === c.valor
-                    ? 'bg-marca-600 text-white shadow-sm'
-                    : 'bg-white text-slate-700 ring-1 ring-slate-300 hover:bg-slate-50'
-                }`}>
-                {c.texto}
-              </button>
-            ))}
+        {!esVariante && (
+          <div>
+            <label className="etiqueta">Categoría <span className="text-red-500">*</span></label>
+            <div className="flex flex-wrap gap-2">
+              {CATEGORIAS.map((c) => (
+                <button key={c.valor} type="button"
+                  onClick={() => setForm({ ...form, categoria: c.valor })}
+                  className={`rounded-lg px-3 py-2 text-sm font-medium transition-all active:scale-95 ${
+                    form.categoria === c.valor
+                      ? 'bg-marca-600 text-white shadow-sm'
+                      : 'bg-white text-slate-700 ring-1 ring-slate-300 hover:bg-slate-50'
+                  }`}>
+                  {c.texto}
+                </button>
+              ))}
+            </div>
+            <p className="mt-1.5 text-xs text-slate-500">
+              Los de categoría Químico son los que se ofrecen para las copias de los talonarios.
+            </p>
           </div>
-          <p className="mt-1.5 text-xs text-slate-500">
-            Los de categoría Químico son los que se ofrecen para las copias de los talonarios.
-          </p>
-        </div>
+        )}
 
-        <div>
-          <label className="etiqueta">Mínimo de alerta (resmas)</label>
-          <input type="number" min={0} className="campo" value={form.minimo}
-            onChange={(e) => setForm({ ...form, minimo: e.target.value })} />
-          <p className="mt-1 text-xs text-slate-500">
-            Cuando la existencia baje de aquí, la fila sale resaltada en rojo.
-          </p>
-        </div>
+        {!partido && (
+          <div>
+            <label className="etiqueta">Mínimo de alerta (resmas)</label>
+            <input type="number" min={0} className="campo" value={form.minimo}
+              onChange={(e) => setForm({ ...form, minimo: e.target.value })} />
+            <p className="mt-1 text-xs text-slate-500">
+              Cuando la existencia baje de aquí, la fila sale resaltada en rojo. En cero no avisa.
+            </p>
+          </div>
+        )}
 
-        <label className="flex cursor-pointer items-start gap-2 rounded-lg bg-emerald-50 px-3 py-2
-                          text-sm text-emerald-900 ring-1 ring-emerald-200">
-          <input type="checkbox" checked={form.esOriginal}
-            onChange={(e) => setForm({ ...form, esOriginal: e.target.checked })}
-            className="mt-0.5 h-4 w-4 rounded border-emerald-300 text-emerald-600 focus:ring-emerald-600" />
-          <span>
-            <span className="font-medium">Es el papel del original</span>
-            <span className="block text-xs text-emerald-700">
-              Se asigna solo a la primera hoja de los talonarios con copias. Marcarlo quita la
-              marca del papel que la tenga.
+        {partido && (
+          <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
+            Este color lleva la existencia separada. Las resmas y el mínimo se manejan en el
+            intermedio y en el final, no aquí.
+          </p>
+        )}
+
+        {!esVariante && (
+          <label className="flex cursor-pointer items-start gap-2 rounded-lg bg-emerald-50 px-3 py-2
+                            text-sm text-emerald-900 ring-1 ring-emerald-200">
+            <input type="checkbox" checked={form.esOriginal}
+              onChange={(e) => setForm({ ...form, esOriginal: e.target.checked })}
+              className="mt-0.5 h-4 w-4 rounded border-emerald-300 text-emerald-600 focus:ring-emerald-600" />
+            <span>
+              <span className="font-medium">Es el papel del original</span>
+              <span className="block text-xs text-emerald-700">
+                Se asigna solo a la primera hoja de los talonarios con copias. Marcarlo quita la
+                marca del papel que la tenga.
+              </span>
             </span>
-          </span>
-        </label>
+          </label>
+        )}
 
         {!papel && (
           <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
@@ -362,6 +560,13 @@ function ModalPapel({
       </div>
     </Caja>
   );
+}
+
+function nombreCompleto(papel: Papel) {
+  if (papel.padre_id && papel.variante) {
+    return `${papel.padre_nombre ?? papel.nombre} · ${ROTULO_VARIANTE[papel.variante]}`;
+  }
+  return papel.nombre;
 }
 
 function ModalMovimiento({
@@ -397,7 +602,7 @@ function ModalMovimiento({
   };
 
   return (
-    <Caja titulo={`Existencia de ${papel.nombre}`} onCerrar={onCerrar}>
+    <Caja titulo={`Existencia de ${nombreCompleto(papel)}`} onCerrar={onCerrar}>
       <div className="space-y-3">
         <p className="text-sm text-slate-500">
           Existencia actual: <strong className="text-slate-900">{papel.resmas} resmas</strong>
@@ -462,7 +667,7 @@ function ModalHistorial({ papel, onCerrar }: { papel: Papel; onCerrar: () => voi
   });
 
   return (
-    <Caja titulo={`Movimientos de ${papel.nombre}`} onCerrar={onCerrar}>
+    <Caja titulo={`Movimientos de ${nombreCompleto(papel)}`} onCerrar={onCerrar}>
       {isLoading ? (
         <div className="grid place-items-center py-8">
           <LoaderCircle className="h-5 w-5 animate-spin text-slate-400" />

@@ -184,9 +184,16 @@ const esquemaPapel = z.object({
   categoria: z.enum(['BOND', 'BRISTOL', 'QUIMICO', 'ESPECIAL']),
   esOriginal: z.boolean().optional(),
   minimo: z.number().int().nonnegative().optional(),
+  padreId: z.number().int().positive().optional().nullable(),
+  variante: z.enum(['INTERMEDIO', 'FINAL']).optional().nullable(),
 });
 
-rutasAdmin.post('/papeles', requierePermiso('catalogos.gestionar'), async (req, res, next) => {
+// Administrar el inventario de papel tiene su propio permiso: quien
+// maneja la bodega agrega y renombra papeles sin que eso le abra los
+// demás catálogos. Quien ya tenía catalogos.gestionar lo sigue pudiendo.
+const administraPapeles = requierePermiso('papeles.gestionar', 'catalogos.gestionar');
+
+rutasAdmin.post('/papeles', administraPapeles, async (req, res, next) => {
   try {
     res.status(201).json(await papeles.crear(esquemaPapel.parse(req.body)));
   } catch (error) {
@@ -194,13 +201,23 @@ rutasAdmin.post('/papeles', requierePermiso('catalogos.gestionar'), async (req, 
   }
 });
 
-rutasAdmin.patch('/papeles/:id', requierePermiso('catalogos.gestionar'), async (req, res, next) => {
+rutasAdmin.patch('/papeles/:id', administraPapeles, async (req, res, next) => {
   try {
     const datos = esquemaPapel
       .partial()
       .extend({ activo: z.boolean().optional() })
+      .omit({ padreId: true, variante: true })
       .parse(req.body);
     res.json(await papeles.actualizar(Number(req.params.id), datos));
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Parte un color de químico en intermedio y final.
+rutasAdmin.post('/papeles/:id/separar', administraPapeles, async (req, res, next) => {
+  try {
+    res.json(await papeles.separar(Number(req.params.id), req.usuario!.id));
   } catch (error) {
     next(error);
   }
@@ -216,7 +233,7 @@ rutasAdmin.get('/papeles/:id/movimientos', async (req, res, next) => {
 
 rutasAdmin.post(
   '/papeles/:id/movimiento',
-  requierePermiso('papeles.movimientos'),
+  requierePermiso('papeles.movimientos', 'papeles.gestionar', 'catalogos.gestionar'),
   async (req, res, next) => {
     try {
       const datos = z

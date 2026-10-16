@@ -28,8 +28,10 @@ export async function todos() {
          FROM flujo_etapas ORDER BY tipo_trabajo_id, secuencia`
     ),
     pool.query(
+      // Las variantes intermedio/final son solo de bodega: al crear la orden
+      // se escoge el color ("Químico Rosado") sin distinguir cuál se usará.
       `SELECT id, nombre, categoria, es_original
-         FROM tipos_papel WHERE activo = 1
+         FROM tipos_papel WHERE activo = 1 AND padre_id IS NULL
         ORDER BY FIELD(categoria,'QUIMICO','BOND','BRISTOL','ESPECIAL'), nombre`
     ),
     pool.query(
