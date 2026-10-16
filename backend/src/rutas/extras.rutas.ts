@@ -3,6 +3,7 @@ import { z } from 'zod';
 import * as camisetas from '../servicios/camisetas.servicio.js';
 import * as trali from '../servicios/trali.servicio.js';
 import * as matImpresion from '../servicios/materialesImpresion.servicio.js';
+import * as telas from '../servicios/telas.servicio.js';
 import {
   autenticar,
   exigirPasswordDefinitiva,
@@ -212,3 +213,45 @@ rutasExtras.delete(
     }
   }
 );
+
+// ---------------------------------------------------------------- Telas
+// Van en su propia tabla, pero se administran desde la misma pantalla.
+
+const esquemaTela = z.object({
+  nombre: z.string().trim().min(2, 'Escriba el nombre de la tela').max(60),
+  activo: z.boolean().optional(),
+});
+
+rutasExtras.get('/telas', requierePermiso('materiales.catalogo'), async (_req, res, next) => {
+  try {
+    res.json(await telas.listar());
+  } catch (error) {
+    next(error);
+  }
+});
+
+rutasExtras.post('/telas', requierePermiso('materiales.catalogo'), async (req, res, next) => {
+  try {
+    res.status(201).json(await telas.crear(esquemaTela.parse(req.body)));
+  } catch (error) {
+    next(error);
+  }
+});
+
+rutasExtras.patch('/telas/:id', requierePermiso('materiales.catalogo'), async (req, res, next) => {
+  try {
+    const datos = esquemaTela.partial().parse(req.body);
+    res.json(await telas.actualizar(Number(req.params.id), datos));
+  } catch (error) {
+    next(error);
+  }
+});
+
+rutasExtras.delete('/telas/:id', requierePermiso('materiales.catalogo'), async (req, res, next) => {
+  try {
+    await telas.eliminar(Number(req.params.id));
+    res.status(204).end();
+  } catch (error) {
+    next(error);
+  }
+});
