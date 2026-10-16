@@ -25,6 +25,7 @@ import Trali from './paginas/Trali';
 import TraliImprimir from './paginas/TraliImprimir';
 import PedidosExternos from './paginas/PedidosExternos';
 import MaterialesImpresion from './paginas/MaterialesImpresion';
+import Vacaciones from './paginas/Vacaciones';
 
 const cliente = new QueryClient({
   defaultOptions: {
@@ -84,6 +85,7 @@ export default function App() {
                 <Route path="/trali" element={<Trali />} />
                 <Route path="/pedidos-externos" element={<PedidosExternos />} />
                 <Route path="/materiales-impresion" element={<MaterialesImpresion />} />
+                <Route path="/vacaciones" element={<Vacaciones />} />
               </Route>
             </Route>
 

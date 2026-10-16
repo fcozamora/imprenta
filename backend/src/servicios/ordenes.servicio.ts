@@ -25,6 +25,7 @@ export interface LineaOrden {
   tipoTrabajoId: number;
   nombreTrabajo: string;
   cantidad: number;
+  precio?: number | null;
   archivoSinCambios?: boolean;
   observaciones?: string | null;
   talonario?: LineaTalonario;
@@ -167,14 +168,15 @@ export async function crear(datos: NuevaOrden, creadoPor: number) {
     for (const linea of datos.lineas) {
       const [res] = await cx.query(
         `INSERT INTO orden_lineas
-           (orden_id, linea, tipo_trabajo_id, nombre_trabajo, cantidad,
+           (orden_id, linea, tipo_trabajo_id, nombre_trabajo, cantidad, precio,
             archivo_sin_cambios, observaciones)
-         VALUES (?, 0, ?, ?, ?, ?, ?)`,
+         VALUES (?, 0, ?, ?, ?, ?, ?, ?)`,
         [
           ordenId,
           linea.tipoTrabajoId,
           linea.nombreTrabajo,
           linea.cantidad,
+          linea.precio ?? null,
           linea.archivoSinCambios ? 1 : 0,
           linea.observaciones ?? null,
         ]
@@ -229,7 +231,7 @@ export async function obtener(id: number) {
 
   const [lineas] = await pool.query(
     `SELECT ol.id, ol.linea, ol.tipo_trabajo_id, tt.codigo AS tipo_codigo,
-            tt.nombre AS tipo_trabajo, ol.nombre_trabajo, ol.cantidad,
+            tt.nombre AS tipo_trabajo, ol.nombre_trabajo, ol.cantidad, ol.precio,
             ol.archivo_sin_cambios, ol.observaciones, ol.fecha_entrega,
             ol.etapa_actual_id, e.codigo AS etapa_codigo, e.nombre AS etapa,
             e.icono AS etapa_icono, e.color AS etapa_color, ol.secuencia_actual,
@@ -697,4 +699,22 @@ export async function tomarLinea(lineaId: number, disenadorId: number) {
   }
 
   return { mensaje: 'Trabajo asignado' };
+}
+
+/**
+ * Corrige el precio anotado en una linea. El precio es referencia interna
+ * para saber cuanto se cotizo; no alimenta ninguna facturacion.
+ */
+export async function fijarPrecio(lineaId: number, precio: number | null) {
+  const [res] = await pool.query(
+    `UPDATE orden_lineas SET precio = ? WHERE id = ?`,
+    [precio, lineaId]
+  );
+  if (!(res as any).affectedRows) throw new ErrorHttp(404, 'Línea no encontrada');
+
+  const [filas] = await pool.query(
+    `SELECT id, orden_id, precio FROM orden_lineas WHERE id = ?`,
+    [lineaId]
+  );
+  return (filas as any[])[0];
 }

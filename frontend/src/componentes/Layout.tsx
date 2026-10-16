@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import {
   Printer, LayoutDashboard, FilePlus2, Users, Stamp, Package,
-  ClipboardList, BarChart3, Settings, LogOut, Menu, X, Search, Bell, Scissors,Shirt, FileStack, Truck, PackageOpen, Layers } from 'lucide-react';
+  ClipboardList, BarChart3, Settings, LogOut, Menu, X, Search, Bell, Scissors,Shirt, FileStack, Truck, PackageOpen, Layers, Palmtree } from 'lucide-react';
 import { useSesion } from '../lib/sesion';
 import Campana from './Campana';
 
@@ -23,6 +23,7 @@ const MENU: ItemMenu[] = [
   { a: '/camisetas', texto: 'Camisetas', icono: Shirt, permisos: ['camisetas.solicitar', 'camisetas.atender'] },
   { a: '/trali', texto: 'Trali', icono: Truck, permisos: ['trali.gestionar'] },
   { a: '/pedidos-externos', texto: 'Pedidos Externos', icono: PackageOpen, permisos: ['pedidos_externos.gestionar'] },
+  { a: '/vacaciones', texto: 'Vacaciones', icono: Palmtree, permisos: ['vacaciones.solicitar'] },
   { a: '/notificaciones', texto: 'Notificaciones', icono: Bell },
   { a: '/bitacora', texto: 'Bitácora', icono: ClipboardList, permisos: ['bitacora.ver'] },
   { a: '/reportes', texto: 'Reportes', icono: BarChart3, permisos: ['reportes.generar'] },

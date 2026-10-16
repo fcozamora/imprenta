@@ -19,6 +19,7 @@ export interface DatosLinea {
   tipoTrabajoId: number | '';
   nombreTrabajo: string;
   cantidad: number | '';
+  precio: number | '';
   archivoSinCambios: boolean;
   observaciones: string;
   // Talonarios
@@ -47,7 +48,7 @@ export interface DatosLinea {
 export function lineaVacia(): DatosLinea {
   return {
     clave: nuevoId(),
-    tipoTrabajoId: '', nombreTrabajo: '', cantidad: '', archivoSinCambios: false,
+    tipoTrabajoId: '', nombreTrabajo: '', cantidad: '', precio: '', archivoSinCambios: false,
     observaciones: '', cantidadBlocks: '', hojasPorBlock: '', tamanoId: '', tamanoOtro: '',
     tipoCopiaId: '', tinta: '', encolado: false, perforado: false, grapado: false, carbon: false,
     numeracionInicial: '', papeles: [], tipoSobreId: '', tamano: '', materialId: '',
@@ -75,12 +76,13 @@ interface Props {
   indice: number;
   catalogos: Catalogos;
   puedeEliminar: boolean;
+  verPrecio?: boolean;
   onCambio: (cambios: Partial<DatosLinea>) => void;
   onEliminar: () => void;
 }
 
 export default function LineaTrabajo({
-  linea, indice, catalogos, puedeEliminar, onCambio, onEliminar,
+  linea, indice, catalogos, puedeEliminar, verPrecio = false, onCambio, onEliminar,
 }: Props) {
   const tipo = catalogos.tiposTrabajo.find((t) => t.id === linea.tipoTrabajoId);
   const codigo = tipo?.codigo;
@@ -179,6 +181,31 @@ export default function LineaTrabajo({
               />
             </div>
           </div>
+
+          {verPrecio && (
+            <div className="sm:w-1/2">
+              <label className="etiqueta">Precio</label>
+              <div className="relative">
+                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+                  ₡
+                </span>
+                <input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  className="campo pl-7"
+                  value={linea.precio}
+                  placeholder="0.00"
+                  onChange={(e) =>
+                    onCambio({ precio: e.target.value === '' ? '' : Number(e.target.value) })
+                  }
+                />
+              </div>
+              <p className="mt-1 text-xs text-slate-500">
+                Referencia interna. No se imprime en la orden de trabajo.
+              </p>
+            </div>
+          )}
 
           <label className="flex w-fit cursor-pointer items-center gap-2 rounded-lg bg-sky-50 px-3 py-2
                             text-sm font-medium text-sky-800 ring-1 ring-sky-200">

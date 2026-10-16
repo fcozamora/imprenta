@@ -40,6 +40,7 @@ const esquemaLinea = z.object({
   tipoTrabajoId: z.number().int().positive(),
   nombreTrabajo: z.string().trim().min(2, 'El nombre del trabajo es obligatorio'),
   cantidad: z.number().int().positive('La cantidad debe ser mayor a cero'),
+  precio: z.number().nonnegative().optional().nullable(),
   archivoSinCambios: z.boolean().optional(),
   observaciones: z.string().trim().optional().nullable(),
   talonario: esquemaTalonario.optional(),
@@ -231,6 +232,21 @@ rutasOrdenes.post(
         })
         .parse(req.body ?? {});
       res.json(await ordenes.avanzarEtapa(Number(req.params.id), req.usuario!.id, datos));
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+rutasOrdenes.patch(
+  '/lineas/:id/precio',
+  requierePermiso('ordenes.ver_precio'),
+  async (req, res, next) => {
+    try {
+      const { precio } = z
+        .object({ precio: z.number().nonnegative().nullable() })
+        .parse(req.body);
+      res.json(await ordenes.fijarPrecio(Number(req.params.id), precio));
     } catch (error) {
       next(error);
     }

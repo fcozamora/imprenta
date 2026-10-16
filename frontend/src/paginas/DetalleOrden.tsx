@@ -186,6 +186,9 @@ export default function DetalleOrden() {
                   <span className="text-xs text-slate-500">
                     Entrega {fecha(linea.fecha_entrega)}
                   </span>
+                  {puede('ordenes.ver_precio') && (
+                    <PrecioLinea lineaId={linea.id} precio={linea.precio} />
+                  )}
                 </div>
               </div>
             </div>
@@ -393,5 +396,73 @@ function Especificaciones({ linea }: { linea: any }) {
         </div>
       ))}
     </>
+  );
+}
+
+/**
+ * Precio anotado en la linea. Se edita en el sitio, sin abrir nada.
+ * Es referencia interna: no alimenta ninguna facturacion ni sale impreso.
+ */
+function PrecioLinea({ lineaId, precio }: { lineaId: number; precio: string | null }) {
+  const cliente = useQueryClient();
+  const [editando, setEditando] = useState(false);
+  const [valor, setValor] = useState(precio ?? '');
+
+  const guardar = useMutation({
+    mutationFn: () =>
+      api.patch(`/lineas/${lineaId}/precio`, {
+        precio: String(valor).trim() === '' ? null : Number(valor),
+      }),
+    onSuccess: () => {
+      setEditando(false);
+      cliente.invalidateQueries({ queryKey: ['orden'] });
+    },
+    onError: (e) => alert(mensajeDeError(e)),
+  });
+
+  if (editando) {
+    return (
+      <span className="inline-flex items-center gap-1">
+        <input
+          type="number"
+          min={0}
+          step="0.01"
+          autoFocus
+          value={valor}
+          onChange={(e) => setValor(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') guardar.mutate();
+            if (e.key === 'Escape') {
+              setValor(precio ?? '');
+              setEditando(false);
+            }
+          }}
+          className="w-28 rounded border border-slate-300 px-2 py-0.5 text-xs"
+        />
+        <button
+          onClick={() => guardar.mutate()}
+          disabled={guardar.isPending}
+          className="rounded bg-marca-600 px-2 py-0.5 text-xs font-medium text-white"
+        >
+          Guardar
+        </button>
+      </span>
+    );
+  }
+
+  return (
+    <button
+      onClick={() => setEditando(true)}
+      title="Anotar el precio"
+      className={`rounded px-2 py-0.5 text-xs font-medium transition-colors ${
+        precio == null
+          ? 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+          : 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
+      }`}
+    >
+      {precio == null
+        ? 'Sin precio'
+        : `₡${Number(precio).toLocaleString('es-CR', { minimumFractionDigits: 2 })}`}
+    </button>
   );
 }

@@ -4,12 +4,15 @@ import { useMutation } from '@tanstack/react-query';
 import { Plus, LoaderCircle, CircleCheck, Printer, Zap } from 'lucide-react';
 import { api, mensajeDeError } from '../lib/api';
 import { useCatalogos } from '../lib/consultas';
+import { useSesion } from '../lib/sesion';
 import BuscadorCliente, { type Cliente } from '../componentes/BuscadorCliente';
 import LineaTrabajo, { lineaVacia, rolDeCopia, type DatosLinea } from '../componentes/LineaTrabajo';
 
 export default function NuevaOrden() {
   const navegar = useNavigate();
   const { data: catalogos, isLoading } = useCatalogos();
+  const { puede } = useSesion();
+  const verPrecio = puede('ordenes.ver_precio');
 
   const [cliente, setCliente] = useState<Cliente | null>(null);
   const [vendedorId, setVendedorId] = useState<number | ''>('');
@@ -20,6 +23,8 @@ export default function NuevaOrden() {
   const [motivoUrgencia, setMotivoUrgencia] = useState('');
   const [fechaEntrega, setFechaEntrega] = useState('');
   const [lineas, setLineas] = useState<DatosLinea[]>([lineaVacia()]);
+
+  const totalOrden = lineas.reduce((s, l) => s + (Number(l.precio) || 0), 0);
   const [error, setError] = useState('');
   const [creada, setCreada] = useState<{
     id: number;
@@ -66,6 +71,7 @@ export default function NuevaOrden() {
             tipoTrabajoId: Number(l.tipoTrabajoId),
             nombreTrabajo: l.nombreTrabajo.trim(),
             cantidad: Number(l.cantidad) || 1,
+            precio: l.precio === '' ? null : Number(l.precio),
             archivoSinCambios: l.archivoSinCambios,
             observaciones: l.observaciones.trim() || null,
           };
@@ -336,10 +342,20 @@ export default function NuevaOrden() {
           indice={indice}
           catalogos={catalogos}
           puedeEliminar={lineas.length > 1}
+          verPrecio={verPrecio}
           onCambio={(cambios) => actualizarLinea(linea.clave, cambios)}
           onEliminar={() => setLineas((ls) => ls.filter((l) => l.clave !== linea.clave))}
         />
       ))}
+
+      {verPrecio && totalOrden > 0 && (
+        <div className="tarjeta flex items-baseline justify-between py-3">
+          <span className="text-sm font-medium text-slate-600">Total de la orden</span>
+          <span className="text-lg font-semibold text-slate-900">
+            ₡{totalOrden.toLocaleString('es-CR', { minimumFractionDigits: 2 })}
+          </span>
+        </div>
+      )}
 
       <button
         type="button"
