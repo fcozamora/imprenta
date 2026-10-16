@@ -6,6 +6,7 @@ import {
 import { api, mensajeDeError } from '../lib/api';
 import { useSesion } from '../lib/sesion';
 import { fecha, fechaHora } from '../lib/formato';
+import HistorialVacaciones from '../componentes/HistorialVacaciones';
 
 type Estado = 'PENDIENTE' | 'APROBADA' | 'RECHAZADA' | 'CANCELADA';
 
@@ -320,6 +321,7 @@ function PanelSolicitudes() {
 
 function PanelSaldos() {
   const [editando, setEditando] = useState<Saldo | null>(null);
+  const [historial, setHistorial] = useState<Saldo | null>(null);
   const { data: filas = [], isLoading } = useQuery({
     queryKey: ['vacaciones', 'saldos'],
     queryFn: async () => (await api.get<Saldo[]>('/vacaciones/saldos')).data,
@@ -348,7 +350,17 @@ function PanelSaldos() {
                 const disponibles = Number(s.disponibles);
                 return (
                   <tr key={s.usuario_id} className="hover:bg-slate-50/70">
-                    <td className="px-4 py-2.5 font-medium text-slate-800">{s.usuario}</td>
+                    <td className="px-4 py-2.5">
+                      <button
+                        onClick={() => setHistorial(s)}
+                        title="Ver su historial de vacaciones"
+                        className="font-medium text-slate-800 underline decoration-slate-300
+                                   underline-offset-4 transition-colors hover:text-marca-700
+                                   hover:decoration-marca-400"
+                      >
+                        {s.usuario}
+                      </button>
+                    </td>
                     <td className="px-4 py-2.5 text-slate-500">{s.puesto}</td>
                     <td className="px-4 py-2.5 text-right text-slate-700">{Number(s.dias_totales)}</td>
                     <td className="px-4 py-2.5 text-right text-slate-700">{Number(s.tomados)}</td>
@@ -382,11 +394,21 @@ function PanelSaldos() {
       </div>
 
       <p className="mt-3 text-xs text-slate-500">
-        Los días tomados se suman de las solicitudes aprobadas, así que el disponible nunca se
-        descuadra. Las personas no ven su saldo: solo el estado de lo que piden.
+        Haga clic en un nombre para ver su historial. Los días tomados se suman de las
+        solicitudes aprobadas, así que el disponible nunca se descuadra. Las personas no ven
+        su saldo: solo el estado de lo que piden.
       </p>
 
       {editando && <ModalSaldo saldo={editando} onCerrar={() => setEditando(null)} />}
+
+      {historial && (
+        <HistorialVacaciones
+          usuarioId={historial.usuario_id}
+          nombre={historial.usuario}
+          puesto={historial.puesto}
+          onCerrar={() => setHistorial(null)}
+        />
+      )}
     </>
   );
 }
