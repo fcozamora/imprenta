@@ -71,8 +71,6 @@ export default function MaterialesImpresion() {
     ? telas
     : materiales.filter((m) => m.categoria === pestana);
 
-  const singular = esTela ? 'tela' : 'material';
-
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -227,15 +225,18 @@ function ModalMaterial({
   const esTela = destino === 'TELA';
 
   const guardar = useMutation({
-    mutationFn: () => {
+    // Devuelve void a proposito: las cuatro llamadas tienen tipos de
+    // respuesta distintos y a react-query no le sirve ninguno.
+    mutationFn: async (): Promise<void> => {
       const texto = nombre.trim();
       if (esTela) {
-        if (fila) return api.patch(`/telas/${fila.id}`, { nombre: texto });
-        return api.post('/telas', { nombre: texto });
+        if (fila) await api.patch(`/telas/${fila.id}`, { nombre: texto });
+        else await api.post('/telas', { nombre: texto });
+        return;
       }
       const cuerpo = { nombre: texto, categoria: destino as Categoria };
-      if (fila) return api.patch(`/materiales-impresion/${fila.id}`, cuerpo);
-      return api.post('/materiales-impresion', cuerpo);
+      if (fila) await api.patch(`/materiales-impresion/${fila.id}`, cuerpo);
+      else await api.post('/materiales-impresion', cuerpo);
     },
     onSuccess: onGuardado,
     onError: (e) => setError(mensajeDeError(e)),
