@@ -186,7 +186,6 @@ export default function NuevaOrden() {
 
   function cabecera() {
     return {
-      clienteId: cliente!.id,
       medioMuestra: medioMuestra || null,
       emailMuestra: medioMuestra === 'EMAIL' ? emailMuestra.trim() || null : null,
       urgente,
@@ -231,6 +230,7 @@ export default function NuevaOrden() {
       if (!vendedorId) throw new Error('Debe seleccionar un vendedor');
       const cuerpo = {
         ...cabecera(),
+        clienteId: cliente.id,
         vendedorId: Number(vendedorId),
         lineas: lineas.map(cuerpoDeLinea),
       };
@@ -333,7 +333,7 @@ export default function NuevaOrden() {
         </h1>
         <p className="mt-0.5 text-sm text-slate-500">
           {editando
-            ? 'Se puede cambiar todo menos el vendedor y el tipo de cada trabajo.'
+            ? 'Se puede cambiar todo menos el cliente, el vendedor y el tipo de cada trabajo.'
             : desde
               ? `Copia de la orden #${plantilla?.numeroOrden ?? ''}. Revise los datos antes de guardar.`
               : 'El número de orden se asigna automáticamente al guardar.'}
@@ -348,7 +348,24 @@ export default function NuevaOrden() {
         </p>
       )}
 
-      <BuscadorCliente cliente={cliente} onCambio={setCliente} />
+      {editando ? (
+        // El cliente de una orden ya registrada no se cambia.
+        <div className="tarjeta">
+          <label className="etiqueta">Cliente</label>
+          <div className="rounded-lg bg-slate-50 px-3 py-2.5 ring-1 ring-slate-200">
+            <p className="font-medium text-slate-900">{cliente?.nombre ?? '—'}</p>
+            <p className="text-xs text-slate-500">
+              {cliente?.cedula}
+              {cliente?.telefono ? ` · Tel. ${cliente.telefono}` : ''}
+            </p>
+          </div>
+          <p className="mt-1.5 text-xs text-slate-500">
+            El cliente queda como se registró la orden.
+          </p>
+        </div>
+      ) : (
+        <BuscadorCliente cliente={cliente} onCambio={setCliente} />
+      )}
 
       <div className="tarjeta space-y-4">
         <div className="grid gap-3 sm:grid-cols-2">

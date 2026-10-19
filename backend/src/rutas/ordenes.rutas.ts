@@ -213,14 +213,14 @@ rutasOrdenes.get('/ordenes/:id/plantilla', async (req, res, next) => {
 });
 
 // Edición completa: los datos de la orden y los campos de cada trabajo.
-// El vendedor no viaja a propósito: queda como se registró.
+// El cliente y el vendedor no viajan a propósito: quedan como se registró.
 rutasOrdenes.put(
   '/ordenes/:id/completa',
   requierePermiso('ordenes.editar'),
   async (req, res, next) => {
     try {
       const datos = esquemaOrden
-        .omit({ vendedorId: true, lineas: true })
+        .omit({ clienteId: true, vendedorId: true, lineas: true })
         .extend({
           lineas: z
             .array(esquemaLinea.extend({ lineaId: z.number().int().positive() }))

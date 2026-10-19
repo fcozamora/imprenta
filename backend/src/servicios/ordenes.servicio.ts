@@ -626,7 +626,6 @@ export async function actualizar(id: number, cambios: CambiosOrden, usuarioId: n
 }
 
 export interface OrdenCompleta {
-  clienteId: number;
   fechaIngreso?: string | null;
   medioMuestra?: 'WHATSAPP' | 'EMAIL' | 'VENDEDOR' | null;
   emailMuestra?: string | null;
@@ -639,8 +638,8 @@ export interface OrdenCompleta {
 
 /**
  * Edita la orden entera: los datos y los campos de cada trabajo. No cambia
- * el vendedor —queda como se registró— ni agrega o quita trabajos: los que
- * llegan tienen que ser exactamente los que ya tiene la orden.
+ * el cliente ni el vendedor —quedan como se registró la orden— ni agrega o
+ * quita trabajos: los que llegan tienen que ser exactamente los que ya tiene.
  *
  * El detalle de cada trabajo se rehace, no se parchea, para no quedar con
  * copias de talonario a medias. Lo que puso produccion (la costurera y el
@@ -691,8 +690,7 @@ export async function actualizarCompleta(
   await enTransaccion(async (cx) => {
     await cx.query(
       `UPDATE ordenes
-          SET cliente_id      = ?,
-              fecha_ingreso   = COALESCE(?, fecha_ingreso),
+          SET fecha_ingreso   = COALESCE(?, fecha_ingreso),
               observaciones   = ?,
               urgente         = ?,
               motivo_urgencia = ?,
@@ -701,7 +699,6 @@ export async function actualizarCompleta(
               email_muestra   = ?
         WHERE id = ?`,
       [
-        datos.clienteId,
         datos.fechaIngreso ?? null,
         datos.observaciones ?? null,
         datos.urgente ? 1 : 0,
