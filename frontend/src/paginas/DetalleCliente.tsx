@@ -2,6 +2,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
   ArrowLeft, LoaderCircle, MessageCircle, Package, FileText, Mail, IdCard, Pencil,
+  RotateCcw,
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { useSesion } from '../lib/sesion';
@@ -197,6 +198,7 @@ export default function DetalleCliente() {
                   <th className="px-5 py-3">Ingreso</th>
                   <th className="px-5 py-3">Entrega</th>
                   <th className="px-5 py-3">Estado</th>
+                  {puede('ordenes.crear') && <th className="px-5 py-3"></th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -226,6 +228,18 @@ export default function DetalleCliente() {
                         {o.estado.charAt(0) + o.estado.slice(1).toLowerCase()}
                       </span>
                     </td>
+                    {puede('ordenes.crear') && (
+                      <td className="px-5 py-3 text-right">
+                        <Link
+                          to={`/ordenes/nueva?desde=${o.id}`}
+                          title="Crear una orden nueva con estos mismos datos"
+                          className="boton-secundario whitespace-nowrap py-1.5 px-3 text-xs"
+                        >
+                          <RotateCcw className="h-3.5 w-3.5" />
+                          Pedir de nuevo
+                        </Link>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>

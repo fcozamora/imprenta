@@ -3,11 +3,18 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Printer, ArrowLeft, LoaderCircle } from 'lucide-react';
 import { api } from '../lib/api';
+import { useSesion } from '../lib/sesion';
 import { fecha } from '../lib/formato';
+
+const colones = (v: number) =>
+  `₡${v.toLocaleString('es-CR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 export default function ImprimirOrden() {
   const { id } = useParams();
   const navegar = useNavigate();
+  // La hoja que imprime produccion sale sin precios.
+  const { puede } = useSesion();
+  const verPrecio = puede('ordenes.ver_precio');
 
   const { data: orden, isLoading } = useQuery({
     queryKey: ['orden', id],
@@ -111,6 +118,9 @@ export default function ImprimirOrden() {
                   <span className="marca-sin-cambios">Archivo sin cambios</span>
                 )}
                 <span className="trabajo-entrega">Entrega {fecha(l.fecha_entrega)}</span>
+                {verPrecio && l.precio != null && (
+                  <span className="trabajo-precio">{colones(Number(l.precio))}</span>
+                )}
               </div>
               <div className="trabajo-datos">
                 <DetalleLinea linea={l} />
@@ -128,6 +138,17 @@ export default function ImprimirOrden() {
           <p className="observaciones-orden">
             <strong>Observaciones generales:</strong> {orden.observaciones}
           </p>
+        )}
+
+        {verPrecio && orden.lineas.some((l: any) => l.precio != null) && (
+          <div className="total-orden">
+            <span>Total de la orden</span>
+            <strong>
+              {colones(
+                orden.lineas.reduce((s: number, l: any) => s + Number(l.precio ?? 0), 0)
+              )}
+            </strong>
+          </div>
         )}
 
         {/* ---------- Firmas ---------- */}

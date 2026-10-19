@@ -204,8 +204,206 @@ export async function crear(datos: NuevaOrden, creadoPor: number) {
       `SELECT id, numero_orden, fecha_ingreso, fecha_entrega FROM ordenes WHERE id = ?`,
       [ordenId]
     );
-    return (orden as any[])[0];
+    // Los ids de las líneas vuelven en el mismo orden en que llegaron, para
+    // que la pantalla pueda subirle la muestra a cada trabajo recién creado.
+    const [lineas] = await cx.query(
+      `SELECT id, linea FROM orden_lineas WHERE orden_id = ? ORDER BY linea`,
+      [ordenId]
+    );
+    return { ...(orden as any[])[0], lineas };
   });
+}
+
+// ---------------------------------------------------------------- Plantilla
+
+/**
+ * Devuelve la orden con los nombres de campo que usa el formulario, para
+ * volver a pedirla o para editarla. Con siguienteNumeracion, los talonarios
+ * arrancan donde quedó el anterior: numeracion_final + 1.
+ */
+export async function plantilla(id: number, siguienteNumeracion = false) {
+  const [ordenes] = await pool.query(
+    `SELECT o.id, o.numero_orden, o.cliente_id, o.vendedor_id, o.fecha_ingreso,
+            o.fecha_entrega, o.observaciones, o.medio_muestra, o.email_muestra,
+            o.urgente, o.motivo_urgencia,
+            c.cedula AS cliente_cedula, c.nombre AS cliente_nombre,
+            c.nombre_comercial, c.telefono, c.email_facturacion,
+            v.nombre_completo AS vendedor
+       FROM ordenes o
+       JOIN clientes c ON c.id = o.cliente_id
+       JOIN usuarios v ON v.id = o.vendedor_id
+      WHERE o.id = ?`,
+    [id]
+  );
+  const orden = (ordenes as any[])[0];
+  if (!orden) throw new ErrorHttp(404, 'Orden no encontrada');
+
+  const [filas] = await pool.query(
+    `SELECT ol.id, ol.tipo_trabajo_id, tt.codigo AS tipo_codigo, tt.nombre AS tipo_trabajo,
+            ol.nombre_trabajo, ol.cantidad, ol.precio, ol.archivo_sin_cambios,
+            ol.observaciones, ol.secuencia_actual, ol.tomada_en, ol.finalizada,
+            ol.entregada, e.nombre AS etapa
+       FROM orden_lineas ol
+       JOIN tipos_trabajo tt ON tt.id = ol.tipo_trabajo_id
+       LEFT JOIN etapas e ON e.id = ol.etapa_actual_id
+      WHERE ol.orden_id = ?
+      ORDER BY ol.linea`,
+    [id]
+  );
+
+  const lineas = [];
+  for (const l of filas as any[]) {
+    const base = {
+      lineaId: l.id,
+      tipoTrabajoId: l.tipo_trabajo_id,
+      tipoCodigo: l.tipo_codigo,
+      tipoTrabajo: l.tipo_trabajo,
+      nombreTrabajo: l.nombre_trabajo,
+      cantidad: l.cantidad,
+      precio: l.precio === null ? '' : Number(l.precio),
+      archivoSinCambios: l.archivo_sin_cambios === 1,
+      observaciones: l.observaciones ?? '',
+      etapa: l.etapa,
+      // Un trabajo ya tomado o que paso de etapa no deberia cambiarse a la
+      // ligera: la pantalla avisa antes de guardar.
+      avanzada:
+        l.secuencia_actual > 1 || l.tomada_en !== null || l.finalizada === 1 || l.entregada === 1,
+      // Valores por defecto del formulario, los pisa el detalle de abajo.
+      cantidadBlocks: '' as number | '',
+      hojasPorBlock: '' as number | '',
+      tamanoId: '' as number | '',
+      tamanoOtro: '',
+      tipoCopiaId: '' as number | '',
+      tinta: '',
+      encolado: false,
+      perforado: false,
+      grapado: false,
+      carbon: false,
+      numeracionInicial: '' as number | '',
+      papeles: [] as number[],
+      tipoSobreId: '' as number | '',
+      tamano: '',
+      materialId: '' as number | '',
+      telaId: '' as number | '',
+      perfilImpresion: '',
+      codigoSello: '',
+      tintaId: '' as number | '',
+    };
+
+    switch (l.tipo_codigo) {
+      case 'TALONARIOS': {
+        const [d] = await pool.query(
+          `SELECT cantidad_blocks, hojas_por_block, tamano_id, tamano_otro, tipo_copia_id,
+                  tinta, encolado, perforado, grapado, carbon,
+                  numeracion_inicial, numeracion_final
+             FROM detalle_talonario WHERE linea_id = ?`,
+          [l.id]
+        );
+        const t = (d as any[])[0];
+        if (t) {
+          const [copias] = await pool.query(
+            `SELECT posicion, papel_id FROM talonario_copias
+              WHERE linea_id = ? ORDER BY posicion`,
+            [l.id]
+          );
+          const papeles: number[] = [];
+          for (const c of copias as any[]) papeles[c.posicion - 1] = c.papel_id;
+
+          Object.assign(base, {
+            cantidadBlocks: t.cantidad_blocks,
+            hojasPorBlock: t.hojas_por_block,
+            tamanoId: t.tamano_id ?? '',
+            tamanoOtro: t.tamano_otro ?? '',
+            tipoCopiaId: t.tipo_copia_id,
+            tinta: t.tinta,
+            encolado: t.encolado === 1,
+            perforado: t.perforado === 1,
+            grapado: t.grapado === 1,
+            carbon: t.carbon === 1,
+            numeracionInicial: siguienteNumeracion
+              ? t.numeracion_final !== null
+                ? Number(t.numeracion_final) + 1
+                : ''
+              : (t.numeracion_inicial ?? ''),
+            papeles,
+          });
+        }
+        break;
+      }
+      case 'SOBRES': {
+        const [d] = await pool.query(
+          `SELECT tipo_sobre_id, tinta FROM detalle_sobre WHERE linea_id = ?`,
+          [l.id]
+        );
+        const s = (d as any[])[0];
+        if (s) Object.assign(base, { tipoSobreId: s.tipo_sobre_id, tinta: s.tinta });
+        break;
+      }
+      case 'HP_LATEX':
+      case 'IMPRESION_DIGITAL': {
+        const [d] = await pool.query(
+          `SELECT tamano, material_id FROM detalle_latex WHERE linea_id = ?`,
+          [l.id]
+        );
+        const x = (d as any[])[0];
+        if (x) Object.assign(base, { tamano: x.tamano, materialId: x.material_id });
+        break;
+      }
+      case 'TEXTIL': {
+        const [d] = await pool.query(
+          `SELECT tela_id, perfil_impresion FROM detalle_textil WHERE linea_id = ?`,
+          [l.id]
+        );
+        const x = (d as any[])[0];
+        if (x) {
+          Object.assign(base, {
+            telaId: x.tela_id,
+            perfilImpresion: x.perfil_impresion ?? '',
+          });
+        }
+        break;
+      }
+      case 'SELLOS': {
+        const [d] = await pool.query(
+          `SELECT codigo_sello, tinta_id FROM detalle_sello WHERE linea_id = ?`,
+          [l.id]
+        );
+        const x = (d as any[])[0];
+        if (x) {
+          Object.assign(base, {
+            codigoSello: x.codigo_sello ?? '',
+            tintaId: x.tinta_id ?? '',
+          });
+        }
+        break;
+      }
+    }
+
+    lineas.push(base);
+  }
+
+  return {
+    ordenId: orden.id,
+    numeroOrden: orden.numero_orden,
+    cliente: {
+      id: orden.cliente_id,
+      cedula: orden.cliente_cedula,
+      nombre: orden.cliente_nombre,
+      nombre_comercial: orden.nombre_comercial,
+      telefono: orden.telefono,
+      email_facturacion: orden.email_facturacion,
+    },
+    vendedorId: orden.vendedor_id,
+    vendedor: orden.vendedor,
+    fechaIngreso: orden.fecha_ingreso,
+    fechaEntrega: orden.fecha_entrega,
+    medioMuestra: orden.medio_muestra ?? '',
+    emailMuestra: orden.email_muestra ?? '',
+    urgente: orden.urgente === 1,
+    motivoUrgencia: orden.motivo_urgencia ?? '',
+    observaciones: orden.observaciones ?? '',
+    lineas,
+  };
 }
 
 // ---------------------------------------------------------------- Consultar
@@ -425,6 +623,199 @@ export async function actualizar(id: number, cambios: CambiosOrden, usuarioId: n
   );
 
   return obtener(id);
+}
+
+export interface OrdenCompleta {
+  clienteId: number;
+  fechaIngreso?: string | null;
+  medioMuestra?: 'WHATSAPP' | 'EMAIL' | 'VENDEDOR' | null;
+  emailMuestra?: string | null;
+  urgente?: boolean;
+  motivoUrgencia?: string | null;
+  fechaEntrega?: string | null;
+  observaciones?: string | null;
+  lineas: Array<LineaOrden & { lineaId: number }>;
+}
+
+/**
+ * Edita la orden entera: los datos y los campos de cada trabajo. No cambia
+ * el vendedor —queda como se registró— ni agrega o quita trabajos: los que
+ * llegan tienen que ser exactamente los que ya tiene la orden.
+ *
+ * El detalle de cada trabajo se rehace, no se parchea, para no quedar con
+ * copias de talonario a medias. Lo que puso produccion (la costurera y el
+ * perfil de impresion) se conserva.
+ */
+export async function actualizarCompleta(
+  id: number,
+  datos: OrdenCompleta,
+  usuarioId: number
+) {
+  const [filas] = await pool.query(
+    `SELECT id, estado, urgente, fecha_entrega FROM ordenes WHERE id = ?`,
+    [id]
+  );
+  const antes = (filas as any[])[0];
+  if (!antes) throw new ErrorHttp(404, 'Orden no encontrada');
+  if (antes.estado === 'ANULADA') throw new ErrorHttp(400, 'La orden está anulada');
+
+  const [lineasActuales] = await pool.query(
+    `SELECT ol.id, ol.tipo_trabajo_id, ol.archivo_sin_cambios, ol.secuencia_actual,
+            ol.tomada_en, ol.finalizada, ol.entregada, tt.codigo AS tipo_codigo
+       FROM orden_lineas ol
+       JOIN tipos_trabajo tt ON tt.id = ol.tipo_trabajo_id
+      WHERE ol.orden_id = ?`,
+    [id]
+  );
+  const actuales = new Map(
+    (lineasActuales as any[]).map((l) => [l.id as number, l])
+  );
+
+  if (datos.lineas.length !== actuales.size) {
+    throw new ErrorHttp(
+      400,
+      'Al editar no se pueden agregar ni quitar trabajos de la orden'
+    );
+  }
+  for (const linea of datos.lineas) {
+    const actual = actuales.get(linea.lineaId);
+    if (!actual) throw new ErrorHttp(400, 'Uno de los trabajos no pertenece a esta orden');
+    if (actual.tipo_trabajo_id !== linea.tipoTrabajoId) {
+      throw new ErrorHttp(
+        400,
+        'No se puede cambiar el tipo de trabajo de un trabajo ya registrado'
+      );
+    }
+  }
+
+  await enTransaccion(async (cx) => {
+    await cx.query(
+      `UPDATE ordenes
+          SET cliente_id      = ?,
+              fecha_ingreso   = COALESCE(?, fecha_ingreso),
+              observaciones   = ?,
+              urgente         = ?,
+              motivo_urgencia = ?,
+              fecha_entrega   = COALESCE(?, fecha_entrega),
+              medio_muestra   = ?,
+              email_muestra   = ?
+        WHERE id = ?`,
+      [
+        datos.clienteId,
+        datos.fechaIngreso ?? null,
+        datos.observaciones ?? null,
+        datos.urgente ? 1 : 0,
+        datos.urgente ? (datos.motivoUrgencia ?? null) : null,
+        datos.urgente ? (datos.fechaEntrega ?? null) : null,
+        datos.medioMuestra ?? null,
+        datos.emailMuestra?.trim() || null,
+        id,
+      ]
+    );
+
+    if (datos.urgente && datos.fechaEntrega) {
+      await cx.query(`UPDATE orden_lineas SET fecha_entrega = ? WHERE orden_id = ?`, [
+        datos.fechaEntrega,
+        id,
+      ]);
+    }
+
+    for (const linea of datos.lineas) {
+      const actual = actuales.get(linea.lineaId)!;
+
+      // Cambiar "archivo sin cambios" mueve las etapas del flujo. En un
+      // trabajo que ya avanzo dejaria la secuencia apuntando a una etapa
+      // que ya no existe, asi que ahi se respeta lo que estaba.
+      const yaAvanzo =
+        actual.secuencia_actual > 1 ||
+        actual.tomada_en !== null ||
+        actual.finalizada === 1 ||
+        actual.entregada === 1;
+      const sinCambios = yaAvanzo
+        ? actual.archivo_sin_cambios === 1
+        : linea.archivoSinCambios === true;
+
+      await cx.query(
+        `UPDATE orden_lineas
+            SET nombre_trabajo      = ?,
+                cantidad            = ?,
+                precio              = ?,
+                archivo_sin_cambios = ?,
+                observaciones       = ?
+          WHERE id = ? AND orden_id = ?`,
+        [
+          linea.nombreTrabajo,
+          linea.cantidad,
+          linea.precio ?? null,
+          sinCambios ? 1 : 0,
+          linea.observaciones ?? null,
+          linea.lineaId,
+          id,
+        ]
+      );
+
+      // La costurera, el perfil y "sin confeccion" los pone produccion, no
+      // este formulario: se leen antes de borrar y se reponen despues.
+      let textilPrevio: any = null;
+      if (actual.tipo_codigo === 'TEXTIL') {
+        const [previo] = await cx.query(
+          `SELECT costurera_id, sin_confeccion, perfil_impresion
+             FROM detalle_textil WHERE linea_id = ?`,
+          [linea.lineaId]
+        );
+        textilPrevio = (previo as any[])[0] ?? null;
+        if (textilPrevio && linea.textil) {
+          linea.textil.costureraId = textilPrevio.costurera_id;
+          if (!linea.textil.perfilImpresion?.trim()) {
+            linea.textil.perfilImpresion = textilPrevio.perfil_impresion;
+          }
+        }
+      }
+
+      await borrarDetalle(cx, linea.lineaId, actual.tipo_codigo);
+      await insertarDetalle(cx, linea.lineaId, linea);
+
+      if (textilPrevio) {
+        await cx.query(`UPDATE detalle_textil SET sin_confeccion = ? WHERE linea_id = ?`, [
+          textilPrevio.sin_confeccion,
+          linea.lineaId,
+        ]);
+      }
+    }
+
+    await cx.query(
+      `INSERT INTO auditoria (tabla, registro_id, accion, usuario_id, datos_antes, datos_despues)
+       VALUES ('ordenes', ?, 'UPDATE', ?,
+               JSON_OBJECT('edicion', 'completa', 'urgente', ?, 'fecha_entrega', ?),
+               JSON_OBJECT('edicion', 'completa', 'urgente', ?, 'fecha_entrega', ?))`,
+      [
+        id,
+        usuarioId,
+        antes.urgente,
+        antes.fecha_entrega,
+        datos.urgente ? 1 : 0,
+        datos.fechaEntrega ?? antes.fecha_entrega,
+      ]
+    );
+  });
+
+  return obtener(id);
+}
+
+/** Borra el detalle específico para poder volver a insertarlo. */
+async function borrarDetalle(cx: PoolConnection, lineaId: number, codigo: string) {
+  const tabla: Record<string, string> = {
+    TALONARIOS: 'detalle_talonario',
+    SOBRES: 'detalle_sobre',
+    HP_LATEX: 'detalle_latex',
+    IMPRESION_DIGITAL: 'detalle_latex',
+    TEXTIL: 'detalle_textil',
+    SELLOS: 'detalle_sello',
+  };
+  const nombre = tabla[codigo];
+  if (!nombre) return;
+  // talonario_copias cuelga de detalle_talonario con ON DELETE CASCADE.
+  await cx.query(`DELETE FROM ${nombre} WHERE linea_id = ?`, [lineaId]);
 }
 
 // ---------------------------------------------------------------- Dashboards

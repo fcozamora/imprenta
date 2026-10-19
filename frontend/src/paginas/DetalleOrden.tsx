@@ -10,14 +10,12 @@ import { useState } from 'react';
 import { fecha, fechaHora, numero, enlaceWhatsapp } from '../lib/formato';
 import BarraEtapas from '../componentes/BarraEtapas';
 import SubirMuestra from '../componentes/SubirMuestra';
-import EditarOrden from '../componentes/EditarOrden';
 
 export default function DetalleOrden() {
   const { id, numero: num } = useParams();
   const navegar = useNavigate();
   const { puede } = useSesion();
   const cliente = useQueryClient();
-  const [editando, setEditando] = useState(false);
   const ruta = num ? `/ordenes/numero/${num}` : `/ordenes/${id}`;
 
   const { data: orden, isLoading, error } = useQuery({
@@ -84,10 +82,10 @@ export default function DetalleOrden() {
 
         <div className="flex gap-2">
           {puede('ordenes.editar') && (
-            <button onClick={() => setEditando(true)} className="boton-secundario">
+            <Link to={`/ordenes/${orden.id}/editar`} className="boton-secundario">
               <Pencil className="h-4 w-4" />
               Editar
-            </button>
+            </Link>
           )}
           <Link to={`/ordenes/${orden.id}/imprimir`} className="boton-secundario">
             <Printer className="h-4 w-4" />
@@ -296,7 +294,6 @@ export default function DetalleOrden() {
           )}
         </div>
       ))}
-      {editando && <EditarOrden orden={orden} onCerrar={() => setEditando(false)} />}
     </div>
   );
 }

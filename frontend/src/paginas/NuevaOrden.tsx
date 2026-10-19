@@ -1,21 +1,39 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useMutation } from '@tanstack/react-query';
-import { Plus, LoaderCircle, CircleCheck, Printer, Zap } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Plus, LoaderCircle, CircleCheck, Printer, Zap, TriangleAlert } from 'lucide-react';
 import { api, mensajeDeError } from '../lib/api';
 import { useCatalogos } from '../lib/consultas';
 import { useSesion } from '../lib/sesion';
 import BuscadorCliente, { type Cliente } from '../componentes/BuscadorCliente';
 import LineaTrabajo, { lineaVacia, rolDeCopia, type DatosLinea } from '../componentes/LineaTrabajo';
+import { nuevoId } from '../lib/id';
 
+/**
+ * Un mismo formulario sirve para tres cosas:
+ *   /ordenes/nueva              ingresar una orden en blanco
+ *   /ordenes/nueva?desde=123     copiar la 123 (talonarios siguen la numeración)
+ *   /ordenes/123/editar          editar la 123
+ * Al editar no se toca el vendedor ni se agregan o quitan trabajos.
+ */
 export default function NuevaOrden() {
   const navegar = useNavigate();
+  const cliente0 = useQueryClient();
+  const { id } = useParams();
+  const [parametros] = useSearchParams();
+  const desde = parametros.get('desde');
+
+  const editando = !!id;
+  const plantillaId = id ?? desde;
+
   const { data: catalogos, isLoading } = useCatalogos();
   const { puede } = useSesion();
   const verPrecio = puede('ordenes.ver_precio');
+  const puedeSubirMuestra = puede('archivos.subir');
 
   const [cliente, setCliente] = useState<Cliente | null>(null);
   const [vendedorId, setVendedorId] = useState<number | ''>('');
+  const [fechaIngreso, setFechaIngreso] = useState('');
   const [observaciones, setObservaciones] = useState('');
   const [medioMuestra, setMedioMuestra] = useState<'WHATSAPP' | 'EMAIL' | 'VENDEDOR' | ''>('');
   const [emailMuestra, setEmailMuestra] = useState('');
@@ -23,14 +41,63 @@ export default function NuevaOrden() {
   const [motivoUrgencia, setMotivoUrgencia] = useState('');
   const [fechaEntrega, setFechaEntrega] = useState('');
   const [lineas, setLineas] = useState<DatosLinea[]>([lineaVacia()]);
-
-  const totalOrden = lineas.reduce((s, l) => s + (Number(l.precio) || 0), 0);
+  const [cargada, setCargada] = useState(false);
   const [error, setError] = useState('');
+  const [avisoMuestras, setAvisoMuestras] = useState('');
   const [creada, setCreada] = useState<{
     id: number;
     numero_orden: number;
     fecha_entrega: string;
   } | null>(null);
+
+  // ---------- Orden de la que se parte, al copiar o al editar ----------
+  const { data: plantilla, isLoading: cargandoPlantilla } = useQuery({
+    queryKey: ['plantilla', plantillaId, editando],
+    queryFn: async () =>
+      (
+        await api.get(`/ordenes/${plantillaId}/plantilla`, {
+          params: editando ? {} : { siguienteNumeracion: true },
+        })
+      ).data,
+    enabled: !!plantillaId,
+  });
+
+  useEffect(() => {
+    if (!plantilla || cargada) return;
+    setCliente(plantilla.cliente);
+    // Al copiar, el vendedor solo se arrastra si todavía está en la lista;
+    // si no, el desplegable diría "Seleccione" con un vendedor puesto por
+    // debajo. Al editar no se toca, así que da igual.
+    setVendedorId(
+      editando || catalogos?.vendedores.some((v) => v.id === plantilla.vendedorId)
+        ? plantilla.vendedorId
+        : ''
+    );
+    setFechaIngreso(plantilla.fechaIngreso?.slice(0, 10) ?? '');
+    setObservaciones(plantilla.observaciones ?? '');
+    setMedioMuestra(plantilla.medioMuestra ?? '');
+    setEmailMuestra(plantilla.emailMuestra ?? '');
+    setUrgente(plantilla.urgente);
+    setMotivoUrgencia(plantilla.motivoUrgencia ?? '');
+    setFechaEntrega(editando ? (plantilla.fechaEntrega?.slice(0, 10) ?? '') : '');
+    setLineas(
+      plantilla.lineas.map((l: any) => ({
+        ...lineaVacia(),
+        ...l,
+        clave: nuevoId(),
+        // Al copiar, los trabajos son nuevos: no arrastran el id ni la etapa.
+        lineaId: editando ? l.lineaId : undefined,
+        avanzada: editando ? l.avanzada : false,
+        etapa: editando ? l.etapa : null,
+        muestra: null,
+        muestraVista: undefined,
+      }))
+    );
+    setCargada(true);
+  }, [plantilla, cargada, editando]);
+
+  const totalOrden = lineas.reduce((s, l) => s + (Number(l.precio) || 0), 0);
+  const hayAvanzadas = editando && lineas.some((l) => l.avanzada);
 
   function actualizarLinea(clave: string, cambios: Partial<DatosLinea>) {
     setLineas((ls) => ls.map((l) => (l.clave === clave ? { ...l, ...cambios } : l)));
@@ -38,8 +105,10 @@ export default function NuevaOrden() {
 
   function limpiar() {
     setCreada(null);
+    setAvisoMuestras('');
     setCliente(null);
     setVendedorId('');
+    setFechaIngreso('');
     setObservaciones('');
     setMedioMuestra('');
     setEmailMuestra('');
@@ -49,92 +118,140 @@ export default function NuevaOrden() {
     setLineas([lineaVacia()]);
   }
 
-  const crear = useMutation({
+  /** Arma una línea con el nombre de campo que espera el servidor. */
+  function cuerpoDeLinea(l: DatosLinea) {
+    const tipo = catalogos!.tiposTrabajo.find((t) => t.id === l.tipoTrabajoId);
+    const codigo = tipo?.codigo;
+
+    const base = {
+      ...(l.lineaId ? { lineaId: l.lineaId } : {}),
+      tipoTrabajoId: Number(l.tipoTrabajoId),
+      nombreTrabajo: l.nombreTrabajo.trim(),
+      cantidad: Number(l.cantidad) || 1,
+      precio: l.precio === '' ? null : Number(l.precio),
+      archivoSinCambios: l.archivoSinCambios,
+      observaciones: l.observaciones.trim() || null,
+    };
+
+    switch (codigo) {
+      case 'TALONARIOS': {
+        const total =
+          catalogos!.tiposCopia.find((c) => c.id === l.tipoCopiaId)?.cantidad_hojas ?? 0;
+        return {
+          ...base,
+          talonario: {
+            cantidadBlocks: Number(l.cantidadBlocks),
+            hojasPorBlock: Number(l.hojasPorBlock),
+            tamanoId: l.tamanoId ? Number(l.tamanoId) : null,
+            tamanoOtro: l.tamanoOtro.trim() || null,
+            tipoCopiaId: Number(l.tipoCopiaId),
+            tinta: l.tinta.trim(),
+            encolado: l.encolado,
+            perforado: l.perforado,
+            grapado: l.grapado,
+            carbon: l.carbon,
+            numeracionInicial: l.numeracionInicial === '' ? null : Number(l.numeracionInicial),
+            copias: l.papeles
+              .map((papelId, i) => ({
+                posicion: i + 1,
+                rol: rolDeCopia(i + 1, total),
+                papelId,
+              }))
+              .filter((c) => c.papelId > 0),
+          },
+        };
+      }
+      case 'SOBRES':
+        return { ...base, sobre: { tipoSobreId: Number(l.tipoSobreId), tinta: l.tinta.trim() } };
+      case 'HP_LATEX':
+      case 'IMPRESION_DIGITAL':
+        return { ...base, latex: { tamano: l.tamano.trim(), materialId: Number(l.materialId) } };
+      case 'TEXTIL':
+        return {
+          ...base,
+          textil: { telaId: Number(l.telaId), perfilImpresion: l.perfilImpresion.trim() || null },
+        };
+      case 'SELLOS':
+        return {
+          ...base,
+          sello: {
+            codigoSello: l.codigoSello.trim() || null,
+            tintaId: l.tintaId ? Number(l.tintaId) : null,
+          },
+        };
+      default:
+        return base;
+    }
+  }
+
+  function cabecera() {
+    return {
+      clienteId: cliente!.id,
+      medioMuestra: medioMuestra || null,
+      emailMuestra: medioMuestra === 'EMAIL' ? emailMuestra.trim() || null : null,
+      urgente,
+      motivoUrgencia: urgente ? motivoUrgencia.trim() || null : null,
+      fechaEntrega: urgente && fechaEntrega ? fechaEntrega : null,
+      observaciones: observaciones.trim() || null,
+    };
+  }
+
+  /** Sube las fotos escogidas en el formulario a cada trabajo recién creado. */
+  async function subirMuestras(lineasCreadas: Array<{ id: number }>) {
+    const fallos: string[] = [];
+    for (let i = 0; i < lineas.length; i++) {
+      const archivo = lineas[i].muestra;
+      const destino = lineasCreadas[i];
+      if (!archivo || !destino) continue;
+      try {
+        const datos = new FormData();
+        datos.append('imagen', archivo);
+        await api.post(`/lineas/${destino.id}/archivos`, datos);
+      } catch (e) {
+        fallos.push(`${lineas[i].nombreTrabajo || `Trabajo ${i + 1}`}: ${mensajeDeError(e)}`);
+      }
+    }
+    return fallos;
+  }
+
+  const guardar = useMutation({
     mutationFn: async () => {
       if (!cliente) throw new Error('Debe seleccionar un cliente');
+
+      if (editando) {
+        const cuerpo = {
+          ...cabecera(),
+          fechaIngreso: fechaIngreso || null,
+          lineas: lineas.map(cuerpoDeLinea),
+        };
+        await api.put(`/ordenes/${id}/completa`, cuerpo);
+        return null;
+      }
+
       if (!vendedorId) throw new Error('Debe seleccionar un vendedor');
-
       const cuerpo = {
-        clienteId: cliente.id,
+        ...cabecera(),
         vendedorId: Number(vendedorId),
-        medioMuestra: medioMuestra || null,
-        emailMuestra: medioMuestra === 'EMAIL' ? emailMuestra.trim() || null : null,
-        urgente,
-        motivoUrgencia: urgente ? motivoUrgencia.trim() || null : null,
-        fechaEntrega: urgente && fechaEntrega ? fechaEntrega : null,
-        observaciones: observaciones.trim() || null,
-        lineas: lineas.map((l) => {
-          const tipo = catalogos!.tiposTrabajo.find((t) => t.id === l.tipoTrabajoId);
-          const codigo = tipo?.codigo;
-
-          const base = {
-            tipoTrabajoId: Number(l.tipoTrabajoId),
-            nombreTrabajo: l.nombreTrabajo.trim(),
-            cantidad: Number(l.cantidad) || 1,
-            precio: l.precio === '' ? null : Number(l.precio),
-            archivoSinCambios: l.archivoSinCambios,
-            observaciones: l.observaciones.trim() || null,
-          };
-
-          switch (codigo) {
-            case 'TALONARIOS': {
-              const total =
-                catalogos!.tiposCopia.find((c) => c.id === l.tipoCopiaId)?.cantidad_hojas ?? 0;
-              return {
-                ...base,
-                talonario: {
-                  cantidadBlocks: Number(l.cantidadBlocks),
-                  hojasPorBlock: Number(l.hojasPorBlock),
-                  tamanoId: l.tamanoId ? Number(l.tamanoId) : null,
-                  tamanoOtro: l.tamanoOtro.trim() || null,
-                  tipoCopiaId: Number(l.tipoCopiaId),
-                  tinta: l.tinta.trim(),
-                  encolado: l.encolado,
-                  perforado: l.perforado,
-                  grapado: l.grapado,
-                  carbon: l.carbon,
-                  numeracionInicial:
-                    l.numeracionInicial === '' ? null : Number(l.numeracionInicial),
-                  copias: l.papeles
-                    .map((papelId, i) => ({
-                      posicion: i + 1,
-                      rol: rolDeCopia(i + 1, total),
-                      papelId,
-                    }))
-                    .filter((c) => c.papelId > 0),
-                },
-              };
-            }
-            case 'SOBRES':
-              return { ...base, sobre: { tipoSobreId: Number(l.tipoSobreId), tinta: l.tinta.trim() } };
-            case 'HP_LATEX':
-            case 'IMPRESION_DIGITAL':
-              return { ...base, latex: { tamano: l.tamano.trim(), materialId: Number(l.materialId) } };
-            case 'TEXTIL':
-              return {
-                ...base,
-                textil: {
-                  telaId: Number(l.telaId),
-                  perfilImpresion: l.perfilImpresion.trim() || null,
-                },
-              };
-            case 'SELLOS':
-              return {
-                ...base,
-                sello: {
-                  codigoSello: l.codigoSello.trim() || null,
-                  tintaId: l.tintaId ? Number(l.tintaId) : null,
-                },
-              };
-            default:
-              return base;
-          }
-        }),
+        lineas: lineas.map(cuerpoDeLinea),
       };
-
-      return (await api.post('/ordenes', cuerpo)).data;
+      const creadaAhora = (await api.post('/ordenes', cuerpo)).data;
+      const fallos = await subirMuestras(creadaAhora.lineas ?? []);
+      return { ...creadaAhora, fallos };
     },
-    onSuccess: (data: any) => setCreada(data),
+    onSuccess: (data: any) => {
+      cliente0.invalidateQueries({ queryKey: ['ordenes'] });
+      if (editando) {
+        cliente0.invalidateQueries({ queryKey: ['orden', id] });
+        navegar(`/ordenes/${id}`);
+        return;
+      }
+      if (data?.fallos?.length) {
+        setAvisoMuestras(
+          `La orden quedó registrada, pero la muestra no se pudo subir: ${data.fallos.join('; ')}`
+        );
+      }
+      setCreada(data);
+    },
     onError: (e) =>
       setError(e instanceof Error && !('response' in e) ? e.message : mensajeDeError(e)),
   });
@@ -142,10 +259,20 @@ export default function NuevaOrden() {
   function enviar(evento: React.FormEvent) {
     evento.preventDefault();
     setError('');
-    crear.mutate();
+    if (hayAvanzadas) {
+      const avanzadas = lineas.filter((l) => l.avanzada).map((l, i) => l.nombreTrabajo || `#${i + 1}`);
+      if (
+        !confirm(
+          `Hay trabajos que ya van avanzados (${avanzadas.join(', ')}). ` +
+            'Puede que ya se hayan impreso o que el diseñador los esté trabajando. ¿Guardar los cambios?'
+        )
+      )
+        return;
+    }
+    guardar.mutate();
   }
 
-  if (isLoading || !catalogos) {
+  if (isLoading || !catalogos || (plantillaId && cargandoPlantilla)) {
     return (
       <div className="grid place-items-center py-20">
         <LoaderCircle className="h-7 w-7 animate-spin text-marca-600" />
@@ -169,6 +296,12 @@ export default function NuevaOrden() {
           <p className="mt-3 text-xs text-slate-500">
             Se generó el mensaje de WhatsApp para el cliente.
           </p>
+
+          {avisoMuestras && (
+            <p className="mt-4 rounded-lg bg-amber-50 px-3 py-2 text-left text-xs text-amber-800 ring-1 ring-amber-200">
+              {avisoMuestras} Puede subirla desde el detalle de la orden.
+            </p>
+          )}
 
           <div className="mt-6 space-y-2">
             <button
@@ -195,11 +328,25 @@ export default function NuevaOrden() {
   return (
     <form onSubmit={enviar} className="mx-auto max-w-3xl space-y-4 pb-8">
       <div>
-        <h1 className="text-xl font-semibold text-slate-900">Nueva orden</h1>
+        <h1 className="text-xl font-semibold text-slate-900">
+          {editando ? `Editar orden #${plantilla?.numeroOrden ?? ''}` : 'Nueva orden'}
+        </h1>
         <p className="mt-0.5 text-sm text-slate-500">
-          El número de orden se asigna automáticamente al guardar.
+          {editando
+            ? 'Se puede cambiar todo menos el vendedor y el tipo de cada trabajo.'
+            : desde
+              ? `Copia de la orden #${plantilla?.numeroOrden ?? ''}. Revise los datos antes de guardar.`
+              : 'El número de orden se asigna automáticamente al guardar.'}
         </p>
       </div>
+
+      {hayAvanzadas && (
+        <p className="flex items-start gap-2 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-900 ring-1 ring-amber-200">
+          <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" />
+          Hay trabajos que ya pasaron de etapa o que alguien ya tomó. Si cambia sus datos, puede
+          que lo que ya se imprimió no coincida con la orden.
+        </p>
+      )}
 
       <BuscadorCliente cliente={cliente} onCambio={setCliente} />
 
@@ -209,16 +356,29 @@ export default function NuevaOrden() {
             <label className="etiqueta">
               Vendedor <span className="text-red-500">*</span>
             </label>
-            <select
-              className="campo"
-              value={vendedorId}
-              onChange={(e) => setVendedorId(e.target.value ? Number(e.target.value) : '')}
-            >
-              <option value="">Seleccione</option>
-              {catalogos.vendedores.map((v) => (
-                <option key={v.id} value={v.id}>{v.nombre}</option>
-              ))}
-            </select>
+            {editando ? (
+              <>
+                <div className="campo bg-slate-100 text-slate-600">
+                  {plantilla?.vendedor ??
+                    catalogos.vendedores.find((v) => v.id === vendedorId)?.nombre ??
+                    '—'}
+                </div>
+                <p className="mt-1 text-xs text-slate-500">
+                  El vendedor queda como se registró la orden.
+                </p>
+              </>
+            ) : (
+              <select
+                className="campo"
+                value={vendedorId}
+                onChange={(e) => setVendedorId(e.target.value ? Number(e.target.value) : '')}
+              >
+                <option value="">Seleccione</option>
+                {catalogos.vendedores.map((v) => (
+                  <option key={v.id} value={v.id}>{v.nombre}</option>
+                ))}
+              </select>
+            )}
           </div>
           <div>
             <label className="etiqueta">Observaciones de la orden</label>
@@ -229,6 +389,21 @@ export default function NuevaOrden() {
             />
           </div>
         </div>
+
+        {editando && (
+          <div className="sm:w-1/2">
+            <label className="etiqueta">Fecha de ingreso</label>
+            <input
+              type="date"
+              className="campo"
+              value={fechaIngreso}
+              onChange={(e) => setFechaIngreso(e.target.value)}
+            />
+            <p className="mt-1 text-xs text-slate-500">
+              Cambiarla no recalcula la fecha de entrega.
+            </p>
+          </div>
+        )}
 
         {/* Canal para hacerle llegar la muestra al cliente */}
         <div>
@@ -341,8 +516,10 @@ export default function NuevaOrden() {
           linea={linea}
           indice={indice}
           catalogos={catalogos}
-          puedeEliminar={lineas.length > 1}
+          puedeEliminar={!editando && lineas.length > 1}
           verPrecio={verPrecio}
+          editando={editando}
+          puedeSubirMuestra={puedeSubirMuestra}
           onCambio={(cambios) => actualizarLinea(linea.clave, cambios)}
           onEliminar={() => setLineas((ls) => ls.filter((l) => l.clave !== linea.clave))}
         />
@@ -357,15 +534,17 @@ export default function NuevaOrden() {
         </div>
       )}
 
-      <button
-        type="button"
-        onClick={() => setLineas((ls) => [...ls, lineaVacia()])}
-        className="boton-secundario w-full border-2 border-dashed border-slate-300 bg-transparent
-                   py-3 ring-0 hover:border-marca-400 hover:bg-marca-50 hover:text-marca-700"
-      >
-        <Plus className="h-4 w-4" />
-        Agregar otro tipo de trabajo
-      </button>
+      {!editando && (
+        <button
+          type="button"
+          onClick={() => setLineas((ls) => [...ls, lineaVacia()])}
+          className="boton-secundario w-full border-2 border-dashed border-slate-300 bg-transparent
+                     py-3 ring-0 hover:border-marca-400 hover:bg-marca-50 hover:text-marca-700"
+        >
+          <Plus className="h-4 w-4" />
+          Agregar otro tipo de trabajo
+        </button>
+      )}
 
       {error && (
         <p className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700 ring-1 ring-red-200">
@@ -373,14 +552,27 @@ export default function NuevaOrden() {
         </p>
       )}
 
-      <div className="sticky bottom-0 -mx-4 border-t border-slate-200 bg-white/95 px-4 py-3 backdrop-blur lg:-mx-6 lg:px-6">
+      <div className="sticky bottom-0 -mx-4 flex gap-2 border-t border-slate-200 bg-white/95 px-4 py-3 backdrop-blur lg:-mx-6 lg:px-6">
+        {editando && (
+          <button
+            type="button"
+            onClick={() => navegar(`/ordenes/${id}`)}
+            className="boton-secundario py-3"
+          >
+            Cancelar
+          </button>
+        )}
         <button
           type="submit"
-          disabled={crear.isPending || !cliente || !vendedorId}
-          className="boton-primario w-full py-3"
+          disabled={guardar.isPending || !cliente || (!editando && !vendedorId)}
+          className="boton-primario flex-1 py-3"
         >
-          {crear.isPending && <LoaderCircle className="h-4 w-4 animate-spin" />}
-          {crear.isPending ? 'Guardando...' : 'Registrar orden'}
+          {guardar.isPending && <LoaderCircle className="h-4 w-4 animate-spin" />}
+          {guardar.isPending
+            ? 'Guardando...'
+            : editando
+              ? 'Guardar cambios'
+              : 'Registrar orden'}
         </button>
       </div>
     </form>

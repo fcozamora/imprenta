@@ -42,16 +42,14 @@ export async function registrar(datos: {
   subidoPor: number;
 }) {
   const [linea] = await pool.query(
-    `SELECT ol.id, ol.archivo_sin_cambios FROM orden_lineas ol WHERE ol.id = ?`,
+    `SELECT ol.id FROM orden_lineas ol WHERE ol.id = ?`,
     [datos.lineaId]
   );
-  const fila = (linea as any[])[0];
-  if (!fila) throw new ErrorHttp(404, 'Línea de orden no encontrada');
+  if (!(linea as any[])[0]) throw new ErrorHttp(404, 'Línea de orden no encontrada');
 
-  // El documento indica omitir el archivo cuando el trabajo no tuvo cambios.
-  if (fila.archivo_sin_cambios) {
-    throw new ErrorHttp(400, 'Este trabajo está marcado como "Archivo sin cambios"');
-  }
+  // Antes se rechazaba la muestra cuando el trabajo iba marcado como
+  // "Archivo sin cambios". Son justo los trabajos de archivo los que se
+  // adjuntaban en papel, asi que ahora si se les puede subir la foto.
 
   const [resultado] = await pool.query(
     `INSERT INTO linea_archivos (linea_id, nombre_archivo, ruta, mime, bytes, subido_por)

@@ -97,7 +97,6 @@ export default function SubirMuestra({ lineaId, archivoSinCambios, puedeSubir }:
   const { data: archivos = [], isLoading } = useQuery({
     queryKey: ['archivos', lineaId],
     queryFn: async () => (await api.get<Archivo[]>(`/lineas/${lineaId}/archivos`)).data,
-    enabled: !archivoSinCambios,
   });
 
   const subir = useMutation({
@@ -113,15 +112,6 @@ export default function SubirMuestra({ lineaId, archivoSinCambios, puedeSubir }:
     },
     onError: (e) => setError(mensajeDeError(e)),
   });
-
-  if (archivoSinCambios) {
-    return (
-      <p className="flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500 ring-1 ring-slate-200">
-        <ImageOff className="h-4 w-4 shrink-0" />
-        Trabajo marcado como "Archivo sin cambios": no se sube muestra.
-      </p>
-    );
-  }
 
   // La más reciente va primero: es la versión vigente.
   const [vigente, ...anteriores] = archivos;
@@ -160,6 +150,13 @@ export default function SubirMuestra({ lineaId, archivoSinCambios, puedeSubir }:
           </>
         )}
       </div>
+
+      {archivoSinCambios && (
+        <p className="flex items-center gap-2 rounded-lg bg-sky-50 px-3 py-2 text-xs text-sky-800 ring-1 ring-sky-200">
+          <ImageOff className="h-4 w-4 shrink-0" />
+          Trabajo de archivo, sin cambios. Igual se le puede adjuntar la foto de la muestra.
+        </p>
+      )}
 
       {error && (
         <p className="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700 ring-1 ring-red-200">

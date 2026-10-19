@@ -153,6 +153,16 @@
   background: #000; color: #fff; border-radius: 1mm; padding: 0.3mm 2mm; font-size: 7.5pt;
 }
 .trabajo-entrega { margin-left: auto; font-size: 8.5pt; font-weight: 600; }
+.trabajo-precio {
+  border: 0.6pt solid #000; border-radius: 1mm; padding: 0.3mm 2mm;
+  font-size: 9pt; font-weight: 700; white-space: nowrap;
+}
+.total-orden {
+  display: flex; justify-content: flex-end; align-items: baseline; gap: 3mm;
+  margin-top: 2.5mm; padding-top: 1.5mm; border-top: 0.8pt solid #000;
+  font-size: 9.5pt;
+}
+.total-orden strong { font-size: 12pt; }
 .trabajo-datos { display: grid; grid-template-columns: repeat(5, 1fr); gap: 1.5mm 3mm; }
 .observaciones { margin-top: 1.5mm; font-size: 8.5pt; }
 .observaciones-orden { margin-top: 2mm; font-size: 8.5pt; }

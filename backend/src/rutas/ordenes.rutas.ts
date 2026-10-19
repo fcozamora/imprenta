@@ -197,6 +197,43 @@ rutasOrdenes.post('/ordenes', requierePermiso('ordenes.crear'), async (req, res,
   }
 });
 
+// Datos de la orden con los nombres que usa el formulario, para volver a
+// pedirla (?siguienteNumeracion=true) o para editarla.
+rutasOrdenes.get('/ordenes/:id/plantilla', async (req, res, next) => {
+  try {
+    res.json(
+      await ordenes.plantilla(
+        Number(req.params.id),
+        req.query.siguienteNumeracion === 'true'
+      )
+    );
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Edición completa: los datos de la orden y los campos de cada trabajo.
+// El vendedor no viaja a propósito: queda como se registró.
+rutasOrdenes.put(
+  '/ordenes/:id/completa',
+  requierePermiso('ordenes.editar'),
+  async (req, res, next) => {
+    try {
+      const datos = esquemaOrden
+        .omit({ vendedorId: true, lineas: true })
+        .extend({
+          lineas: z
+            .array(esquemaLinea.extend({ lineaId: z.number().int().positive() }))
+            .min(1, 'La orden debe conservar sus trabajos'),
+        })
+        .parse(req.body);
+      res.json(await ordenes.actualizarCompleta(Number(req.params.id), datos, req.usuario!.id));
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
 rutasOrdenes.patch('/ordenes/:id', requierePermiso('ordenes.editar'), async (req, res, next) => {
   try {
     const datos = z

@@ -1,4 +1,5 @@
-import { Trash2 } from 'lucide-react';
+import { useRef } from 'react';
+import { ImagePlus, Trash2, X } from 'lucide-react';
 import type { Catalogos } from '../lib/consultas';
 import { nuevoId } from '../lib/id';
 
@@ -16,6 +17,14 @@ function papelesDeCopia(papeles: Catalogos['papeles'], rol: string, totalCopias:
 
 export interface DatosLinea {
   clave: string;
+  /** Solo al editar: el trabajo que ya existe en la base. */
+  lineaId?: number;
+  /** Solo al editar: ya lo tomó alguien o pasó de etapa. */
+  avanzada?: boolean;
+  etapa?: string | null;
+  /** Foto de la muestra escogida al crear la orden, todavía sin subir. */
+  muestra?: File | null;
+  muestraVista?: string;
   tipoTrabajoId: number | '';
   nombreTrabajo: string;
   cantidad: number | '';
@@ -47,7 +56,7 @@ export interface DatosLinea {
 
 export function lineaVacia(): DatosLinea {
   return {
-    clave: nuevoId(),
+    clave: nuevoId(), muestra: null,
     tipoTrabajoId: '', nombreTrabajo: '', cantidad: '', precio: '', archivoSinCambios: false,
     observaciones: '', cantidadBlocks: '', hojasPorBlock: '', tamanoId: '', tamanoOtro: '',
     tipoCopiaId: '', tinta: '', encolado: false, perforado: false, grapado: false, carbon: false,
@@ -77,15 +86,28 @@ interface Props {
   catalogos: Catalogos;
   puedeEliminar: boolean;
   verPrecio?: boolean;
+  /** Al editar no se cambia el tipo de trabajo ni se adjunta la muestra aquí. */
+  editando?: boolean;
+  puedeSubirMuestra?: boolean;
   onCambio: (cambios: Partial<DatosLinea>) => void;
   onEliminar: () => void;
 }
 
 export default function LineaTrabajo({
-  linea, indice, catalogos, puedeEliminar, verPrecio = false, onCambio, onEliminar,
+  linea, indice, catalogos, puedeEliminar, verPrecio = false,
+  editando = false, puedeSubirMuestra = false, onCambio, onEliminar,
 }: Props) {
+  const entradaMuestra = useRef<HTMLInputElement>(null);
   const tipo = catalogos.tiposTrabajo.find((t) => t.id === linea.tipoTrabajoId);
   const codigo = tipo?.codigo;
+
+  function escogerMuestra(archivo: File | null) {
+    if (linea.muestraVista) URL.revokeObjectURL(linea.muestraVista);
+    onCambio({
+      muestra: archivo,
+      muestraVista: archivo ? URL.createObjectURL(archivo) : undefined,
+    });
+  }
 
   const copias = catalogos.tiposCopia.find((c) => c.id === linea.tipoCopiaId)?.cantidad_hojas ?? 0;
   const nf = numeracionFinal(linea);
@@ -110,7 +132,14 @@ export default function LineaTrabajo({
   return (
     <div className="tarjeta space-y-4 border-l-4 border-l-marca-500">
       <div className="flex items-center justify-between">
-        <h3 className="font-semibold text-slate-900">Trabajo {indice + 1}</h3>
+        <h3 className="font-semibold text-slate-900">
+          Trabajo {indice + 1}
+          {editando && linea.etapa && (
+            <span className="ml-2 rounded bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
+              {linea.etapa}
+            </span>
+          )}
+        </h3>
         {puedeEliminar && (
           <button
             type="button"
@@ -127,24 +156,38 @@ export default function LineaTrabajo({
       {/* ---------- Tipo de trabajo ---------- */}
       <div>
         <label className="etiqueta">Tipo de trabajo <span className="text-red-500">*</span></label>
-        <div className="flex flex-wrap gap-2">
-          {catalogos.tiposTrabajo.map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => onCambio({ tipoTrabajoId: t.id })}
-              className={`rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150
-                          active:scale-95 ${
-                            linea.tipoTrabajoId === t.id
-                              ? 'bg-marca-600 text-white shadow-sm'
-                              : 'bg-white text-slate-700 ring-1 ring-slate-300 hover:bg-slate-50'
-                          }`}
-            >
-              {t.nombre}
-            </button>
-          ))}
-        </div>
-        {tipo && (
+        {editando ? (
+          // El tipo decide en qué tabla vive el detalle y qué etapas lleva:
+          // cambiarlo a mitad de camino dejaría el trabajo sin su historial.
+          <>
+            <div className="campo w-fit bg-slate-100 font-medium text-slate-700">
+              {tipo?.nombre ?? 'Sin definir'}
+            </div>
+            <p className="mt-1.5 text-xs text-slate-500">
+              El tipo de trabajo no se cambia. Si está equivocado, anule la orden e ingrésela
+              de nuevo.
+            </p>
+          </>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {catalogos.tiposTrabajo.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => onCambio({ tipoTrabajoId: t.id })}
+                className={`rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150
+                            active:scale-95 ${
+                              linea.tipoTrabajoId === t.id
+                                ? 'bg-marca-600 text-white shadow-sm'
+                                : 'bg-white text-slate-700 ring-1 ring-slate-300 hover:bg-slate-50'
+                            }`}
+              >
+                {t.nombre}
+              </button>
+            ))}
+          </div>
+        )}
+        {tipo && !editando && (
           <p className="mt-1.5 text-xs text-slate-500">
             Plazo de entrega: {tipo.dias_habiles_entrega} días hábiles
           </p>
@@ -202,21 +245,93 @@ export default function LineaTrabajo({
                 />
               </div>
               <p className="mt-1 text-xs text-slate-500">
-                Referencia interna. No se imprime en la orden de trabajo.
+                Sale en la orden impresa, pero solo cuando la imprime alguien que puede ver
+                precios.
               </p>
             </div>
           )}
 
-          <label className="flex w-fit cursor-pointer items-center gap-2 rounded-lg bg-sky-50 px-3 py-2
-                            text-sm font-medium text-sky-800 ring-1 ring-sky-200">
+          <label
+            className={`flex w-fit items-center gap-2 rounded-lg bg-sky-50 px-3 py-2 text-sm
+                        font-medium text-sky-800 ring-1 ring-sky-200 ${
+                          editando && linea.avanzada ? 'opacity-60' : 'cursor-pointer'
+                        }`}
+            title={
+              editando && linea.avanzada
+                ? 'El trabajo ya avanzó de etapa: cambiar esto le movería el flujo'
+                : undefined
+            }
+          >
             <input
               type="checkbox"
               checked={linea.archivoSinCambios}
+              disabled={editando && linea.avanzada}
               onChange={(e) => onCambio({ archivoSinCambios: e.target.checked })}
               className="h-4 w-4 rounded border-sky-300 text-sky-600 focus:ring-sky-600"
             />
             Archivo sin cambios
           </label>
+
+          {/* ---------- Muestra del trabajo ---------- */}
+          {!editando && puedeSubirMuestra && (
+            <div>
+              <label className="etiqueta">Muestra del trabajo</label>
+              <input
+                ref={entradaMuestra}
+                type="file"
+                accept="image/jpeg,image/png"
+                className="hidden"
+                onChange={(e) => escogerMuestra(e.target.files?.[0] ?? null)}
+              />
+              {linea.muestraVista ? (
+                <div className="flex items-start gap-3">
+                  <img
+                    src={linea.muestraVista}
+                    alt=""
+                    className="h-24 w-24 rounded-lg object-cover ring-1 ring-slate-200"
+                  />
+                  <div className="space-y-1.5">
+                    <p className="text-xs text-slate-600">{linea.muestra?.name}</p>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => entradaMuestra.current?.click()}
+                        className="boton-secundario py-1.5 px-3 text-xs"
+                      >
+                        Cambiar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          escogerMuestra(null);
+                          if (entradaMuestra.current) entradaMuestra.current.value = '';
+                        }}
+                        className="boton-secundario py-1.5 px-3 text-xs"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                        Quitar
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => entradaMuestra.current?.click()}
+                  className="boton-secundario w-full border-2 border-dashed border-slate-300
+                             bg-transparent py-3 text-sm ring-0 hover:border-marca-400
+                             hover:bg-marca-50 hover:text-marca-700"
+                >
+                  <ImagePlus className="h-4 w-4" />
+                  Adjuntar foto de la muestra
+                </button>
+              )}
+              <p className="mt-1 text-xs text-slate-500">
+                JPG o PNG. Se guarda con la orden apenas se registra, así no hay que imprimirla
+                en papel.
+              </p>
+            </div>
+          )}
 
           {/* ---------- TALONARIOS ---------- */}
           {codigo === 'TALONARIOS' && (
