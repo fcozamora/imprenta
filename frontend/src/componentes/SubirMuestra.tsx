@@ -1,6 +1,7 @@
-import { useRef, useState, useEffect } from 'react';
+import { useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ImagePlus, LoaderCircle, ImageOff, Expand } from 'lucide-react';
+import ImagenProtegida from './ImagenProtegida';
 import { api, mensajeDeError } from '../lib/api';
 import { fechaHora } from '../lib/formato';
 
@@ -10,76 +11,6 @@ interface Archivo {
   bytes: number;
   subido_en: string;
   subido_por: string;
-}
-
-/**
- * Las imágenes están detrás del token, así que una etiqueta <img> normal
- * no puede pedirlas: el navegador no manda el encabezado de autorización.
- * Se descargan con el cliente de la API y se muestran desde memoria.
- */
-function useImagenProtegida(id: number) {
-  const [url, setUrl] = useState<string | null>(null);
-  const [error, setError] = useState(false);
-
-  useEffect(() => {
-    let vigente = true;
-    let creada: string | null = null;
-
-    api
-      .get(`/archivos/${id}`, { responseType: 'blob' })
-      .then(({ data }) => {
-        if (!vigente) return;
-        creada = URL.createObjectURL(data as Blob);
-        setUrl(creada);
-      })
-      .catch(() => {
-        if (vigente) setError(true);
-      });
-
-    return () => {
-      vigente = false;
-      if (creada) URL.revokeObjectURL(creada);
-    };
-  }, [id]);
-
-  return { url, error };
-}
-
-function Imagen({
-  id, alt, className, onAmpliar,
-}: {
-  id: number;
-  alt: string;
-  className: string;
-  onAmpliar?: (url: string) => void;
-}) {
-  const { url, error } = useImagenProtegida(id);
-
-  if (error) {
-    return (
-      <div className={`${className} grid place-items-center bg-slate-100`}>
-        <ImageOff className="h-5 w-5 text-slate-300" />
-      </div>
-    );
-  }
-
-  if (!url) {
-    return (
-      <div className={`${className} grid place-items-center bg-slate-50`}>
-        <LoaderCircle className="h-5 w-5 animate-spin text-slate-300" />
-      </div>
-    );
-  }
-
-  return (
-    <img
-      src={url}
-      alt={alt}
-      className={className}
-      onClick={() => onAmpliar?.(url)}
-      loading="lazy"
-    />
-  );
 }
 
 interface Props {
@@ -175,7 +106,7 @@ export default function SubirMuestra({ lineaId, archivoSinCambios, puedeSubir }:
       ) : (
         <div className="space-y-2">
           <div className="group relative overflow-hidden rounded-lg ring-1 ring-slate-200">
-            <Imagen
+            <ImagenProtegida
               id={vigente.id}
               alt={vigente.nombre_archivo}
               className="h-40 w-full cursor-zoom-in bg-slate-50 object-contain"
@@ -203,7 +134,7 @@ export default function SubirMuestra({ lineaId, archivoSinCambios, puedeSubir }:
                     className="shrink-0 overflow-hidden rounded ring-1 ring-slate-200
                                transition-opacity hover:opacity-80"
                   >
-                    <Imagen
+                    <ImagenProtegida
                       id={a.id}
                       alt=""
                       className="h-14 w-14 cursor-zoom-in bg-slate-50 object-cover"

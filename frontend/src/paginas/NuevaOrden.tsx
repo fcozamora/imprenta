@@ -91,6 +91,14 @@ export default function NuevaOrden() {
         etapa: editando ? l.etapa : null,
         muestra: null,
         muestraVista: undefined,
+        // Al pedir de nuevo, el trabajo arranca con la muestra que ya tenía;
+        // al editar, la muestra ya está pegada al trabajo y no se vuelve a tocar.
+        muestraArchivoId: editando ? null : (l.muestraArchivoId ?? null),
+        muestraArchivoNombre: editando
+          ? undefined
+          : l.muestraArchivoId
+            ? `${l.nombreTrabajo} · orden #${plantilla.numeroOrden}`
+            : undefined,
       }))
     );
     setCargada(true);
@@ -195,19 +203,28 @@ export default function NuevaOrden() {
     };
   }
 
-  /** Sube las fotos escogidas en el formulario a cada trabajo recién creado. */
-  async function subirMuestras(lineasCreadas: Array<{ id: number }>) {
+  /**
+   * Deja la muestra en cada trabajo recién creado: la del banco se engancha
+   * sin volver a subir nada, la nueva se sube desde la computadora.
+   */
+  async function guardarMuestras(lineasCreadas: Array<{ id: number }>) {
     const fallos: string[] = [];
     for (let i = 0; i < lineas.length; i++) {
-      const archivo = lineas[i].muestra;
+      const l = lineas[i];
       const destino = lineasCreadas[i];
-      if (!archivo || !destino) continue;
+      if (!destino || (!l.muestra && !l.muestraArchivoId)) continue;
       try {
-        const datos = new FormData();
-        datos.append('imagen', archivo);
-        await api.post(`/lineas/${destino.id}/archivos`, datos);
+        if (l.muestraArchivoId) {
+          await api.post(`/lineas/${destino.id}/archivos/copiar`, {
+            archivoId: l.muestraArchivoId,
+          });
+        } else {
+          const datos = new FormData();
+          datos.append('imagen', l.muestra!);
+          await api.post(`/lineas/${destino.id}/archivos`, datos);
+        }
       } catch (e) {
-        fallos.push(`${lineas[i].nombreTrabajo || `Trabajo ${i + 1}`}: ${mensajeDeError(e)}`);
+        fallos.push(`${l.nombreTrabajo || `Trabajo ${i + 1}`}: ${mensajeDeError(e)}`);
       }
     }
     return fallos;
@@ -235,7 +252,7 @@ export default function NuevaOrden() {
         lineas: lineas.map(cuerpoDeLinea),
       };
       const creadaAhora = (await api.post('/ordenes', cuerpo)).data;
-      const fallos = await subirMuestras(creadaAhora.lineas ?? []);
+      const fallos = await guardarMuestras(creadaAhora.lineas ?? []);
       return { ...creadaAhora, fallos };
     },
     onSuccess: (data: any) => {
@@ -537,6 +554,7 @@ export default function NuevaOrden() {
           verPrecio={verPrecio}
           editando={editando}
           puedeSubirMuestra={puedeSubirMuestra}
+          clienteId={cliente?.id ?? null}
           onCambio={(cambios) => actualizarLinea(linea.clave, cambios)}
           onEliminar={() => setLineas((ls) => ls.filter((l) => l.clave !== linea.clave))}
         />

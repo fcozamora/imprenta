@@ -1,7 +1,9 @@
-import { useRef } from 'react';
-import { ImagePlus, Trash2, X } from 'lucide-react';
+import { useRef, useState } from 'react';
+import { ImagePlus, Images, Trash2, X } from 'lucide-react';
 import type { Catalogos } from '../lib/consultas';
 import { nuevoId } from '../lib/id';
+import BancoMuestras, { useMuestrasDelCliente } from './BancoMuestras';
+import ImagenProtegida from './ImagenProtegida';
 
 /**
  * Papeles disponibles según la posición de la hoja:
@@ -25,6 +27,9 @@ export interface DatosLinea {
   /** Foto de la muestra escogida al crear la orden, todavía sin subir. */
   muestra?: File | null;
   muestraVista?: string;
+  /** Muestra tomada del banco del cliente, que se engancha al guardar. */
+  muestraArchivoId?: number | null;
+  muestraArchivoNombre?: string;
   tipoTrabajoId: number | '';
   nombreTrabajo: string;
   cantidad: number | '';
@@ -56,7 +61,7 @@ export interface DatosLinea {
 
 export function lineaVacia(): DatosLinea {
   return {
-    clave: nuevoId(), muestra: null,
+    clave: nuevoId(), muestra: null, muestraArchivoId: null,
     tipoTrabajoId: '', nombreTrabajo: '', cantidad: '', precio: '', archivoSinCambios: false,
     observaciones: '', cantidadBlocks: '', hojasPorBlock: '', tamanoId: '', tamanoOtro: '',
     tipoCopiaId: '', tinta: '', encolado: false, perforado: false, grapado: false, carbon: false,
@@ -89,15 +94,21 @@ interface Props {
   /** Al editar no se cambia el tipo de trabajo ni se adjunta la muestra aquí. */
   editando?: boolean;
   puedeSubirMuestra?: boolean;
+  /** Cliente de la orden, para ofrecerle su banco de muestras. */
+  clienteId?: number | null;
   onCambio: (cambios: Partial<DatosLinea>) => void;
   onEliminar: () => void;
 }
 
 export default function LineaTrabajo({
   linea, indice, catalogos, puedeEliminar, verPrecio = false,
-  editando = false, puedeSubirMuestra = false, onCambio, onEliminar,
+  editando = false, puedeSubirMuestra = false, clienteId = null, onCambio, onEliminar,
 }: Props) {
   const entradaMuestra = useRef<HTMLInputElement>(null);
+  const [abrirBanco, setAbrirBanco] = useState(false);
+  const { data: muestrasDelCliente = [] } = useMuestrasDelCliente(
+    !editando && puedeSubirMuestra ? clienteId : null
+  );
   const tipo = catalogos.tiposTrabajo.find((t) => t.id === linea.tipoTrabajoId);
   const codigo = tipo?.codigo;
 
@@ -106,6 +117,19 @@ export default function LineaTrabajo({
     onCambio({
       muestra: archivo,
       muestraVista: archivo ? URL.createObjectURL(archivo) : undefined,
+      muestraArchivoId: null,
+      muestraArchivoNombre: undefined,
+    });
+  }
+
+  function quitarMuestra() {
+    if (linea.muestraVista) URL.revokeObjectURL(linea.muestraVista);
+    if (entradaMuestra.current) entradaMuestra.current.value = '';
+    onCambio({
+      muestra: null,
+      muestraVista: undefined,
+      muestraArchivoId: null,
+      muestraArchivoNombre: undefined,
     });
   }
 
@@ -283,29 +307,53 @@ export default function LineaTrabajo({
                 className="hidden"
                 onChange={(e) => escogerMuestra(e.target.files?.[0] ?? null)}
               />
-              {linea.muestraVista ? (
+              {linea.muestraVista || linea.muestraArchivoId ? (
                 <div className="flex items-start gap-3">
-                  <img
-                    src={linea.muestraVista}
-                    alt=""
-                    className="h-24 w-24 rounded-lg object-cover ring-1 ring-slate-200"
-                  />
+                  {linea.muestraArchivoId ? (
+                    <ImagenProtegida
+                      id={linea.muestraArchivoId}
+                      alt=""
+                      className="h-24 w-24 rounded-lg object-cover ring-1 ring-slate-200"
+                    />
+                  ) : (
+                    <img
+                      src={linea.muestraVista}
+                      alt=""
+                      className="h-24 w-24 rounded-lg object-cover ring-1 ring-slate-200"
+                    />
+                  )}
                   <div className="space-y-1.5">
-                    <p className="text-xs text-slate-600">{linea.muestra?.name}</p>
-                    <div className="flex gap-2">
+                    <p className="text-xs text-slate-600">
+                      {linea.muestraArchivoId
+                        ? (linea.muestraArchivoNombre ?? 'Muestra del banco del cliente')
+                        : linea.muestra?.name}
+                    </p>
+                    {linea.muestraArchivoId && (
+                      <p className="text-xs text-slate-400">
+                        Tomada de las muestras del cliente
+                      </p>
+                    )}
+                    <div className="flex flex-wrap gap-2">
+                      {clienteId && (
+                        <button
+                          type="button"
+                          onClick={() => setAbrirBanco(true)}
+                          className="boton-secundario py-1.5 px-3 text-xs"
+                        >
+                          <Images className="h-3.5 w-3.5" />
+                          Cambiar por otra del cliente
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={() => entradaMuestra.current?.click()}
                         className="boton-secundario py-1.5 px-3 text-xs"
                       >
-                        Cambiar
+                        Subir otra foto
                       </button>
                       <button
                         type="button"
-                        onClick={() => {
-                          escogerMuestra(null);
-                          if (entradaMuestra.current) entradaMuestra.current.value = '';
-                        }}
+                        onClick={quitarMuestra}
                         className="boton-secundario py-1.5 px-3 text-xs"
                       >
                         <X className="h-3.5 w-3.5" />
@@ -315,21 +363,56 @@ export default function LineaTrabajo({
                   </div>
                 </div>
               ) : (
-                <button
-                  type="button"
-                  onClick={() => entradaMuestra.current?.click()}
-                  className="boton-secundario w-full border-2 border-dashed border-slate-300
-                             bg-transparent py-3 text-sm ring-0 hover:border-marca-400
-                             hover:bg-marca-50 hover:text-marca-700"
-                >
-                  <ImagePlus className="h-4 w-4" />
-                  Adjuntar foto de la muestra
-                </button>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  {/* Lo primero es buscar en lo que el cliente ya tiene. */}
+                  {clienteId && (
+                    <button
+                      type="button"
+                      onClick={() => setAbrirBanco(true)}
+                      className="boton-secundario flex-1 border-2 border-dashed border-marca-300
+                                 bg-transparent py-3 text-sm text-marca-700 ring-0
+                                 hover:border-marca-400 hover:bg-marca-50"
+                    >
+                      <Images className="h-4 w-4" />
+                      Escoger de las muestras del cliente
+                      {muestrasDelCliente.length > 0 && ` (${muestrasDelCliente.length})`}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => entradaMuestra.current?.click()}
+                    className="boton-secundario flex-1 border-2 border-dashed border-slate-300
+                               bg-transparent py-3 text-sm ring-0 hover:border-marca-400
+                               hover:bg-marca-50 hover:text-marca-700"
+                  >
+                    <ImagePlus className="h-4 w-4" />
+                    Subir una foto nueva
+                  </button>
+                </div>
               )}
               <p className="mt-1 text-xs text-slate-500">
-                JPG o PNG. Se guarda con la orden apenas se registra, así no hay que imprimirla
-                en papel.
+                {clienteId
+                  ? 'El banco tiene la última versión de cada trabajo que se le ha hecho al cliente. La foto nueva queda ahí también, para la próxima vez.'
+                  : 'Escoja primero el cliente para ver las muestras que ya tiene. JPG o PNG.'}
               </p>
+
+              {abrirBanco && clienteId && (
+                <BancoMuestras
+                  clienteId={clienteId}
+                  nombreTrabajo={linea.nombreTrabajo}
+                  onCerrar={() => setAbrirBanco(false)}
+                  onEscoger={(m) => {
+                    if (linea.muestraVista) URL.revokeObjectURL(linea.muestraVista);
+                    onCambio({
+                      muestra: null,
+                      muestraVista: undefined,
+                      muestraArchivoId: m.id,
+                      muestraArchivoNombre: `${m.nombre_trabajo} · orden #${m.numero_orden}`,
+                    });
+                    setAbrirBanco(false);
+                  }}
+                />
+              )}
             </div>
           )}
 

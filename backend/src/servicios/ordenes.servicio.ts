@@ -242,7 +242,9 @@ export async function plantilla(id: number, siguienteNumeracion = false) {
     `SELECT ol.id, ol.tipo_trabajo_id, tt.codigo AS tipo_codigo, tt.nombre AS tipo_trabajo,
             ol.nombre_trabajo, ol.cantidad, ol.precio, ol.archivo_sin_cambios,
             ol.observaciones, ol.secuencia_actual, ol.tomada_en, ol.finalizada,
-            ol.entregada, e.nombre AS etapa
+            ol.entregada, e.nombre AS etapa,
+            (SELECT MAX(la.id) FROM linea_archivos la WHERE la.linea_id = ol.id)
+              AS muestra_archivo_id
        FROM orden_lineas ol
        JOIN tipos_trabajo tt ON tt.id = ol.tipo_trabajo_id
        LEFT JOIN etapas e ON e.id = ol.etapa_actual_id
@@ -264,6 +266,9 @@ export async function plantilla(id: number, siguienteNumeracion = false) {
       archivoSinCambios: l.archivo_sin_cambios === 1,
       observaciones: l.observaciones ?? '',
       etapa: l.etapa,
+      // Para "pedir de nuevo": la muestra que ya traía ese trabajo, para
+      // engancharla a la orden nueva sin volver a subirla.
+      muestraArchivoId: l.muestra_archivo_id ?? null,
       // Un trabajo ya tomado o que paso de etapa no deberia cambiarse a la
       // ligera: la pantalla avisa antes de guardar.
       avanzada:

@@ -58,6 +58,34 @@ rutasReportes.post(
   }
 );
 
+// Banco de muestras del cliente: la última versión de cada trabajo que se
+// le ha hecho, para escogerla al ingresar una orden nueva.
+rutasReportes.get('/clientes/:id/muestras', async (req, res, next) => {
+  try {
+    res.json(await archivos.muestrasDeCliente(Number(req.params.id)));
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Engancha una muestra del banco a un trabajo recién creado.
+rutasReportes.post(
+  '/lineas/:id/archivos/copiar',
+  requierePermiso('archivos.subir'),
+  async (req, res, next) => {
+    try {
+      const { archivoId } = z
+        .object({ archivoId: z.number().int().positive() })
+        .parse(req.body);
+      res
+        .status(201)
+        .json(await archivos.copiarMuestra(archivoId, Number(req.params.id), req.usuario!.id));
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
 rutasReportes.get('/lineas/:id/archivos', async (req, res, next) => {
   try {
     res.json(await archivos.listar(Number(req.params.id)));
