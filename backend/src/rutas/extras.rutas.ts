@@ -4,6 +4,7 @@ import * as camisetas from '../servicios/camisetas.servicio.js';
 import * as trali from '../servicios/trali.servicio.js';
 import * as matImpresion from '../servicios/materialesImpresion.servicio.js';
 import * as telas from '../servicios/telas.servicio.js';
+import * as pendientes from '../servicios/pendientes.servicio.js';
 import {
   autenticar,
   exigirPasswordDefinitiva,
@@ -12,6 +13,17 @@ import {
 
 export const rutasExtras = Router();
 rutasExtras.use(autenticar, exigirPasswordDefinitiva);
+
+// ---------------------------------------------------------------- Pendientes
+// Lo que el menú marca con un círculo: solo lo que esta persona atiende.
+
+rutasExtras.get('/pendientes', async (req, res, next) => {
+  try {
+    res.json(await pendientes.contar(req.usuario!));
+  } catch (error) {
+    next(error);
+  }
+});
 
 // ---------------------------------------------------------------- Camisetas
 

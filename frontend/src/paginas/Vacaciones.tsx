@@ -163,7 +163,11 @@ function PanelMias() {
 
   const cancelar = useMutation({
     mutationFn: (id: number) => api.post(`/vacaciones/${id}/cancelar`),
-    onSuccess: () => cliente.invalidateQueries({ queryKey: ['vacaciones'] }),
+    onSuccess: () => {
+      cliente.invalidateQueries({ queryKey: ['vacaciones'] });
+      cliente.invalidateQueries({ queryKey: ['pendientes'] });
+      cliente.invalidateQueries({ queryKey: ['pendientes'] });
+    },
     onError: (e) => alert(mensajeDeError(e)),
   });
 
@@ -433,6 +437,7 @@ function ModalSolicitar({ onCerrar, onGuardado }: { onCerrar: () => void; onGuar
       }),
     onSuccess: () => {
       cliente.invalidateQueries({ queryKey: ['vacaciones'] });
+      cliente.invalidateQueries({ queryKey: ['pendientes'] });
       onGuardado();
     },
     onError: (e) => setError(mensajeDeError(e)),
@@ -534,6 +539,7 @@ function ModalResolver({ solicitud, onCerrar }: { solicitud: Solicitud; onCerrar
       }),
     onSuccess: () => {
       cliente.invalidateQueries({ queryKey: ['vacaciones'] });
+      cliente.invalidateQueries({ queryKey: ['pendientes'] });
       onCerrar();
     },
     onError: (e) => setError(mensajeDeError(e)),
@@ -658,6 +664,7 @@ function ModalSaldo({ saldo, onCerrar }: { saldo: Saldo; onCerrar: () => void })
       }),
     onSuccess: () => {
       cliente.invalidateQueries({ queryKey: ['vacaciones'] });
+      cliente.invalidateQueries({ queryKey: ['pendientes'] });
       onCerrar();
     },
     onError: (e) => setError(mensajeDeError(e)),

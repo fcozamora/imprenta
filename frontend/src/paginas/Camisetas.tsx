@@ -51,7 +51,11 @@ export default function Camisetas() {
   const cambiarEstado = useMutation({
     mutationFn: ({ id, estado }: { id: number; estado: string }) =>
       api.post(`/camisetas/${id}/estado`, { estado }),
-    onSuccess: () => cliente.invalidateQueries({ queryKey: ['camisetas'] }),
+    onSuccess: () => {
+      cliente.invalidateQueries({ queryKey: ['camisetas'] });
+      cliente.invalidateQueries({ queryKey: ['pendientes'] });
+      cliente.invalidateQueries({ queryKey: ['pendientes'] });
+    },
     onError: (e) => alert(mensajeDeError(e)),
   });
 
@@ -177,6 +181,7 @@ export default function Camisetas() {
           onGuardado={() => {
             setNuevo(false);
             cliente.invalidateQueries({ queryKey: ['camisetas'] });
+      cliente.invalidateQueries({ queryKey: ['pendientes'] });
             cliente.invalidateQueries({ queryKey: ['notificaciones'] });
           }}
         />

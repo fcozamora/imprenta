@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
+import { api } from '../lib/api';
 import {
   Printer, LayoutDashboard, FilePlus2, Users, Stamp, Package,
   ClipboardList, BarChart3, Settings, LogOut, Menu, X, Search, Bell, Scissors,Shirt, FileStack, Truck, PackageOpen, Layers, Palmtree } from 'lucide-react';
@@ -7,11 +9,20 @@ import { useSesion } from '../lib/sesion';
 import Campana from './Campana';
 
 
+/** Lo que el servidor cuenta como pendiente de atender. */
+interface Pendientes {
+  materiales: number;
+  camisetas: number;
+  vacaciones: number;
+}
+
 interface ItemMenu {
   a: string;
   texto: string;
   icono: typeof Printer;
   permisos?: string[];
+  /** Marca el ícono con un círculo cuando hay cosas esperando. */
+  pendientes?: keyof Pendientes;
 }
 
 const MENU: ItemMenu[] = [
@@ -19,11 +30,11 @@ const MENU: ItemMenu[] = [
   { a: '/ordenes/nueva', texto: 'Nueva orden', icono: FilePlus2, permisos: ['ordenes.crear'] },
   { a: '/clientes', texto: 'Clientes', icono: Users, permisos: ['clientes.gestionar'] },
   { a: '/sellos', texto: 'Sellos', icono: Stamp, permisos: ['sellos.ver'] },
-  { a: '/materiales', texto: 'Materiales', icono: Package, permisos: ['materiales.solicitar', 'materiales.atender'] },
-  { a: '/camisetas', texto: 'Camisetas', icono: Shirt, permisos: ['camisetas.solicitar', 'camisetas.atender'] },
+  { a: '/materiales', texto: 'Materiales', icono: Package, permisos: ['materiales.solicitar', 'materiales.atender'], pendientes: 'materiales' },
+  { a: '/camisetas', texto: 'Camisetas', icono: Shirt, permisos: ['camisetas.solicitar', 'camisetas.atender'], pendientes: 'camisetas' },
   { a: '/trali', texto: 'Trali', icono: Truck, permisos: ['trali.gestionar'] },
   { a: '/pedidos-externos', texto: 'Pedidos Externos', icono: PackageOpen, permisos: ['pedidos_externos.gestionar'] },
-  { a: '/vacaciones', texto: 'Vacaciones', icono: Palmtree, permisos: ['vacaciones.solicitar'] },
+  { a: '/vacaciones', texto: 'Vacaciones', icono: Palmtree, permisos: ['vacaciones.solicitar'], pendientes: 'vacaciones' },
   { a: '/notificaciones', texto: 'Notificaciones', icono: Bell },
   { a: '/bitacora', texto: 'Bitácora', icono: ClipboardList, permisos: ['bitacora.ver'] },
   { a: '/reportes', texto: 'Reportes', icono: BarChart3, permisos: ['reportes.generar'] },
@@ -43,6 +54,15 @@ export default function Layout() {
   
 
   const visibles = MENU.filter((i) => !i.permisos || puede(...i.permisos));
+
+  // Lo que está esperando que alguien lo atienda. Se refresca solo cada
+  // minuto, así el círculo aparece sin tener que recargar la pantalla.
+  const { data: pendientes } = useQuery({
+    queryKey: ['pendientes'],
+    queryFn: async () => (await api.get<Pendientes>('/pendientes')).data,
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  });
 
   const iniciales = usuario?.nombre
     .split(' ')
@@ -151,25 +171,44 @@ export default function Layout() {
                       ${menuAbierto ? 'translate-x-0' : '-translate-x-full'}`}
         >
           <nav className="space-y-0.5 p-3">
-            {visibles.map(({ a, texto, icono: Icono }) => (
-              <NavLink
-                key={a}
-                to={a}
-                end={a === '/'}
-                onClick={() => setMenuAbierto(false)}
-                className={({ isActive }) =>
-                  `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium
-                   transition-colors duration-150 ${
-                     isActive
-                       ? 'bg-marca-50 text-marca-700'
-                       : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-                   }`
-                }
-              >
-                <Icono className="h-4.5 w-4.5 shrink-0" />
-                {texto}
-              </NavLink>
-            ))}
+            {visibles.map(({ a, texto, icono: Icono, pendientes: clave }) => {
+              const cuantos = clave ? (pendientes?.[clave] ?? 0) : 0;
+              return (
+                <NavLink
+                  key={a}
+                  to={a}
+                  end={a === '/'}
+                  onClick={() => setMenuAbierto(false)}
+                  className={({ isActive }) =>
+                    `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium
+                     transition-colors duration-150 ${
+                       isActive
+                         ? 'bg-marca-50 text-marca-700'
+                         : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                     }`
+                  }
+                  title={
+                    cuantos > 0
+                      ? `${cuantos} ${cuantos === 1 ? 'pendiente' : 'pendientes'} de atender`
+                      : undefined
+                  }
+                >
+                  <span className="relative shrink-0">
+                    <Icono className="h-4.5 w-4.5" />
+                    {cuantos > 0 && (
+                      <span
+                        className="absolute -right-1.5 -top-1.5 grid h-4 min-w-4 place-items-center
+                                   rounded-full bg-red-600 px-1 text-[10px] font-bold leading-none
+                                   text-white ring-2 ring-white"
+                      >
+                        {cuantos > 9 ? '9+' : cuantos}
+                      </span>
+                    )}
+                  </span>
+                  {texto}
+                </NavLink>
+              );
+            })}
           </nav>
         </aside>
 

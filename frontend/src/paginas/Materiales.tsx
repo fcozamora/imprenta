@@ -46,7 +46,11 @@ export default function Materiales() {
   const cambiarEstado = useMutation({
     mutationFn: ({ id, estado }: { id: number; estado: string }) =>
       api.post(`/materiales/${id}/estado`, { estado }),
-    onSuccess: () => cliente.invalidateQueries({ queryKey: ['materiales'] }),
+    onSuccess: () => {
+      cliente.invalidateQueries({ queryKey: ['materiales'] });
+      cliente.invalidateQueries({ queryKey: ['pendientes'] });
+      cliente.invalidateQueries({ queryKey: ['pendientes'] });
+    },
     onError: (e) => alert(mensajeDeError(e)),
   });
 
@@ -140,6 +144,7 @@ export default function Materiales() {
         <ModalSolicitud onCerrar={() => setNueva(false)} onGuardado={() => {
           setNueva(false);
           cliente.invalidateQueries({ queryKey: ['materiales'] });
+      cliente.invalidateQueries({ queryKey: ['pendientes'] });
           cliente.invalidateQueries({ queryKey: ['notificaciones'] });
         }} />
       )}
