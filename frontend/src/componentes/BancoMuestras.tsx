@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Images, LoaderCircle, Search, X } from 'lucide-react';
+import { Images, LoaderCircle, Search, X, ZoomIn } from 'lucide-react';
 import { api } from '../lib/api';
 import { fecha } from '../lib/formato';
 import ImagenProtegida from './ImagenProtegida';
+import VisorImagen from './VisorImagen';
 
 export interface MuestraDelBanco {
   id: number;
@@ -42,6 +43,8 @@ export default function BancoMuestras({
   const { data: muestras = [], isLoading } = useMuestrasDelCliente(clienteId);
   // Si el trabajo ya tiene nombre, se arranca buscando por él.
   const [busqueda, setBusqueda] = useState(nombreTrabajo?.trim() ?? '');
+  // El recorte de la miniatura esconde parte del dibujo: la lupa la abre entera.
+  const [ampliada, setAmpliada] = useState<{ url: string; nombre?: string } | null>(null);
 
   const texto = busqueda.trim().toLowerCase();
   const visibles = texto
@@ -117,11 +120,11 @@ export default function BancoMuestras({
           ) : (
             <div className="grid gap-2 sm:grid-cols-2">
               {visibles.map((m) => (
+                <div key={m.id} className="relative">
                 <button
-                  key={m.id}
                   type="button"
                   onClick={() => onEscoger(m)}
-                  className="flex items-start gap-3 rounded-lg p-2 text-left ring-1 ring-slate-200
+                  className="flex w-full items-start gap-3 rounded-lg p-2 text-left ring-1 ring-slate-200
                              transition-colors hover:bg-marca-50 hover:ring-marca-300"
                 >
                   <ImagenProtegida
@@ -143,11 +146,71 @@ export default function BancoMuestras({
                     )}
                   </div>
                 </button>
+                <VerCompleta
+                  id={m.id}
+                  nombre={m.nombre_trabajo}
+                  onAmpliar={setAmpliada}
+                />
+                </div>
               ))}
             </div>
           )}
         </div>
       </div>
+
+      {ampliada && (
+        <VisorImagen
+          url={ampliada.url}
+          nombre={ampliada.nombre}
+          onCerrar={() => {
+            // Esta copia se bajó solo para verla: se suelta al cerrar.
+            URL.revokeObjectURL(ampliada.url);
+            setAmpliada(null);
+          }}
+        />
+      )}
     </div>
+  );
+}
+
+/**
+ * Lupa encima de la miniatura, que está recortada para que quepa. Va aparte
+ * del botón de la tarjeta porque un botón dentro de otro no es HTML válido,
+ * y baja la imagen solo cuando se le da clic, no de entrada.
+ */
+function VerCompleta({
+  id, nombre, onAmpliar,
+}: {
+  id: number;
+  nombre: string;
+  onAmpliar: (v: { url: string; nombre: string }) => void;
+}) {
+  const [bajando, setBajando] = useState(false);
+
+  async function abrir() {
+    setBajando(true);
+    try {
+      const { data } = await api.get(`/archivos/${id}`, { responseType: 'blob' });
+      onAmpliar({ url: URL.createObjectURL(data as Blob), nombre });
+    } finally {
+      setBajando(false);
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      title="Ver completa"
+      onClick={abrir}
+      disabled={bajando}
+      className="absolute left-3 top-3 grid h-6 w-6 place-items-center rounded bg-slate-900/60
+                 text-white transition-opacity hover:bg-slate-900/80 disabled:opacity-50"
+    >
+      {bajando ? (
+        <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+      ) : (
+        <ZoomIn className="h-3.5 w-3.5" />
+      )}
+    </button>
   );
 }

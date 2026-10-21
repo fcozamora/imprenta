@@ -4,6 +4,8 @@ import type { Catalogos } from '../lib/consultas';
 import { nuevoId } from '../lib/id';
 import BancoMuestras, { useMuestrasDelCliente } from './BancoMuestras';
 import ImagenProtegida from './ImagenProtegida';
+import VisorImagen from './VisorImagen';
+import { useZonaArrastre } from '../lib/arrastre';
 
 /**
  * Papeles disponibles según la posición de la hoja:
@@ -106,6 +108,8 @@ export default function LineaTrabajo({
 }: Props) {
   const entradaMuestra = useRef<HTMLInputElement>(null);
   const [abrirBanco, setAbrirBanco] = useState(false);
+  const [ampliada, setAmpliada] = useState<{ url: string; nombre?: string } | null>(null);
+  const [errorMuestra, setErrorMuestra] = useState('');
   const { data: muestrasDelCliente = [] } = useMuestrasDelCliente(
     !editando && puedeSubirMuestra ? clienteId : null
   );
@@ -114,6 +118,7 @@ export default function LineaTrabajo({
 
   function escogerMuestra(archivo: File | null) {
     if (linea.muestraVista) URL.revokeObjectURL(linea.muestraVista);
+    setErrorMuestra('');
     onCambio({
       muestra: archivo,
       muestraVista: archivo ? URL.createObjectURL(archivo) : undefined,
@@ -121,6 +126,9 @@ export default function LineaTrabajo({
       muestraArchivoNombre: undefined,
     });
   }
+
+  // Se puede soltar la foto encima del recuadro.
+  const arrastre = useZonaArrastre(escogerMuestra, setErrorMuestra);
 
   function quitarMuestra() {
     if (linea.muestraVista) URL.revokeObjectURL(linea.muestraVista);
@@ -298,7 +306,12 @@ export default function LineaTrabajo({
 
           {/* ---------- Muestra del trabajo ---------- */}
           {!editando && puedeSubirMuestra && (
-            <div>
+            <div
+              className={`rounded-lg transition-colors ${
+                arrastre.encima ? 'bg-marca-50 p-2 ring-2 ring-marca-400' : ''
+              }`}
+              {...arrastre.props}
+            >
               <label className="etiqueta">Muestra del trabajo</label>
               <input
                 ref={entradaMuestra}
@@ -313,13 +326,20 @@ export default function LineaTrabajo({
                     <ImagenProtegida
                       id={linea.muestraArchivoId}
                       alt=""
-                      className="h-24 w-24 rounded-lg object-cover ring-1 ring-slate-200"
+                      className="h-24 w-24 cursor-zoom-in rounded-lg object-cover ring-1 ring-slate-200"
+                      onAmpliar={(url) =>
+                        setAmpliada({ url, nombre: linea.muestraArchivoNombre })
+                      }
                     />
                   ) : (
                     <img
                       src={linea.muestraVista}
                       alt=""
-                      className="h-24 w-24 rounded-lg object-cover ring-1 ring-slate-200"
+                      title="Ver completa"
+                      onClick={() =>
+                        setAmpliada({ url: linea.muestraVista!, nombre: linea.muestra?.name })
+                      }
+                      className="h-24 w-24 cursor-zoom-in rounded-lg object-cover ring-1 ring-slate-200"
                     />
                   )}
                   <div className="space-y-1.5">
@@ -392,9 +412,23 @@ export default function LineaTrabajo({
               )}
               <p className="mt-1 text-xs text-slate-500">
                 {clienteId
-                  ? 'El banco tiene la última versión de cada trabajo que se le ha hecho al cliente. La foto nueva queda ahí también, para la próxima vez.'
-                  : 'Escoja primero el cliente para ver las muestras que ya tiene. JPG o PNG.'}
+                  ? 'El banco tiene la última versión de cada trabajo que se le ha hecho al cliente. La foto nueva queda ahí también, para la próxima vez. También puede arrastrar la foto hasta aquí.'
+                  : 'Escoja primero el cliente para ver las muestras que ya tiene. JPG o PNG, o arrastre la foto hasta aquí.'}
               </p>
+
+              {errorMuestra && (
+                <p className="mt-1.5 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700 ring-1 ring-red-200">
+                  {errorMuestra}
+                </p>
+              )}
+
+              {ampliada && (
+                <VisorImagen
+                  url={ampliada.url}
+                  nombre={ampliada.nombre}
+                  onCerrar={() => setAmpliada(null)}
+                />
+              )}
 
               {abrirBanco && clienteId && (
                 <BancoMuestras

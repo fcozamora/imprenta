@@ -2,7 +2,9 @@ import { useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ImagePlus, LoaderCircle, ImageOff, Expand } from 'lucide-react';
 import ImagenProtegida from './ImagenProtegida';
+import VisorImagen from './VisorImagen';
 import { api, mensajeDeError } from '../lib/api';
+import { useZonaArrastre } from '../lib/arrastre';
 import { fechaHora } from '../lib/formato';
 
 interface Archivo {
@@ -23,7 +25,7 @@ export default function SubirMuestra({ lineaId, archivoSinCambios, puedeSubir }:
   const cliente = useQueryClient();
   const entrada = useRef<HTMLInputElement>(null);
   const [error, setError] = useState('');
-  const [ampliada, setAmpliada] = useState<string | null>(null);
+  const [ampliada, setAmpliada] = useState<{ url: string; nombre?: string } | null>(null);
 
   const { data: archivos = [], isLoading } = useQuery({
     queryKey: ['archivos', lineaId],
@@ -44,11 +46,22 @@ export default function SubirMuestra({ lineaId, archivoSinCambios, puedeSubir }:
     onError: (e) => setError(mensajeDeError(e)),
   });
 
+  // Se puede soltar la foto encima en vez de buscarla en la computadora.
+  const arrastre = useZonaArrastre(
+    (archivo) => subir.mutate(archivo),
+    (mensaje) => setError(mensaje)
+  );
+
   // La más reciente va primero: es la versión vigente.
   const [vigente, ...anteriores] = archivos;
 
   return (
-    <div className="space-y-2">
+    <div
+      className={`space-y-2 rounded-lg transition-colors ${
+        puedeSubir && arrastre.encima ? 'bg-marca-50 ring-2 ring-marca-400' : ''
+      }`}
+      {...(puedeSubir ? arrastre.props : {})}
+    >
       <div className="flex items-center justify-between">
         <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
           Muestra del trabajo
@@ -101,7 +114,9 @@ export default function SubirMuestra({ lineaId, archivoSinCambios, puedeSubir }:
         </div>
       ) : archivos.length === 0 ? (
         <p className="rounded-lg border-2 border-dashed border-slate-200 px-3 py-6 text-center text-xs text-slate-400">
-          Sin muestras cargadas
+          {puedeSubir
+            ? 'Sin muestras cargadas. Arrastre la foto aquí o use el botón de arriba.'
+            : 'Sin muestras cargadas'}
         </p>
       ) : (
         <div className="space-y-2">
@@ -110,7 +125,7 @@ export default function SubirMuestra({ lineaId, archivoSinCambios, puedeSubir }:
               id={vigente.id}
               alt={vigente.nombre_archivo}
               className="h-40 w-full cursor-zoom-in bg-slate-50 object-contain"
-              onAmpliar={setAmpliada}
+              onAmpliar={(url) => setAmpliada({ url, nombre: vigente.nombre_archivo })}
             />
             <span className="pointer-events-none absolute right-2 top-2 rounded bg-slate-900/60 p-1
                              opacity-0 transition-opacity group-hover:opacity-100">
@@ -138,7 +153,7 @@ export default function SubirMuestra({ lineaId, archivoSinCambios, puedeSubir }:
                       id={a.id}
                       alt=""
                       className="h-14 w-14 cursor-zoom-in bg-slate-50 object-cover"
-                      onAmpliar={setAmpliada}
+                      onAmpliar={(url) => setAmpliada({ url, nombre: a.nombre_archivo })}
                     />
                   </div>
                 ))}
@@ -148,23 +163,14 @@ export default function SubirMuestra({ lineaId, archivoSinCambios, puedeSubir }:
         </div>
       )}
 
-      {/* Vista ampliada */}
       {ampliada && (
-        <div
-          className="fixed inset-0 z-50 grid place-items-center bg-slate-900/80 p-6"
-          onClick={() => setAmpliada(null)}
-        >
-          <img
-            src={ampliada}
-            alt=""
-            className="max-h-full max-w-full rounded-lg object-contain shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          />
-          <p className="absolute bottom-4 text-xs text-white/70">
-            Haga clic fuera de la imagen para cerrar
-          </p>
-        </div>
+        <VisorImagen
+          url={ampliada.url}
+          nombre={ampliada.nombre}
+          onCerrar={() => setAmpliada(null)}
+        />
       )}
+
     </div>
   );
 }
