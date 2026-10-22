@@ -72,7 +72,7 @@ export default function Materiales() {
       </div>
 
       {atiende && (
-        <div className="flex gap-1">
+        <div className="flex flex-wrap gap-1">
           {['', 'PENDIENTE', 'APROBADA', 'COMPRADA', 'RECHAZADA'].map((e) => (
             <button key={e} onClick={() => setFiltroEstado(e)}
               className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${

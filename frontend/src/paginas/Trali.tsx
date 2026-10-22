@@ -110,7 +110,7 @@ export default function Trali() {
             {porCobrar > 0 && ` · ₡${porCobrar.toLocaleString('es-CR')} por cobrar`}
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <button onClick={exportar} disabled={filas.length === 0} className="boton-secundario">
             <Download className="h-4 w-4" />
             CSV

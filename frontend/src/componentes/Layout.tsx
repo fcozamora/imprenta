@@ -71,6 +71,47 @@ export default function Layout() {
     .join('')
     .toUpperCase();
 
+  /** El mismo buscador sirve para la fila de arriba y para la de teléfono. */
+  function barraBusqueda(clase: string) {
+    return (
+      <form onSubmit={buscar} className={clase}>
+        <div className="flex rounded-lg ring-1 ring-slate-300 transition-shadow
+                        focus-within:ring-2 focus-within:ring-marca-600">
+          <select
+            value={campo}
+            onChange={(e) => setCampo(e.target.value as typeof campo)}
+            aria-label="Buscar por"
+            className="shrink-0 rounded-l-lg border-0 bg-slate-50 py-2 pl-3 pr-7 text-sm
+                       font-medium text-slate-600 focus:outline-none"
+          >
+            <option value="CLIENTE">Cliente</option>
+            <option value="ORDEN">Orden</option>
+            <option value="TELEFONO">Teléfono</option>
+          </select>
+
+          <div className="relative flex-1">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4
+                               -translate-y-1/2 text-slate-400" />
+            <input
+              value={busqueda}
+              onChange={(e) => setBusqueda(e.target.value)}
+              inputMode={campo === 'CLIENTE' ? 'text' : 'numeric'}
+              placeholder={
+                campo === 'ORDEN'
+                  ? 'Número de orden'
+                  : campo === 'TELEFONO'
+                    ? 'Teléfono del cliente'
+                    : 'Nombre o cédula del cliente'
+              }
+              className="w-full rounded-r-lg border-0 bg-white py-2 pl-8 pr-3 text-sm
+                         text-slate-900 placeholder:text-slate-400 focus:outline-none"
+            />
+          </div>
+        </div>
+      </form>
+    );
+  }
+
   function buscar(evento: React.FormEvent) {
     evento.preventDefault();
     const termino = busqueda.trim();
@@ -102,40 +143,7 @@ export default function Layout() {
             <img src="/impresc.svg" alt="Imprenta SC" className="h-8 w-auto" />
           </div>
 
-          <form onSubmit={buscar} className="ml-2 flex-1 max-w-lg">
-            <div className="flex rounded-lg ring-1 ring-slate-300 transition-shadow
-                            focus-within:ring-2 focus-within:ring-marca-600">
-              <select
-                value={campo}
-                onChange={(e) => setCampo(e.target.value as typeof campo)}
-                aria-label="Buscar por"
-                className="shrink-0 rounded-l-lg border-0 bg-slate-50 py-2 pl-3 pr-7 text-sm
-                           font-medium text-slate-600 focus:outline-none"
-              >
-                <option value="CLIENTE">Cliente</option>
-                <option value="ORDEN">Orden</option>
-                <option value="TELEFONO">Teléfono</option>
-              </select>
-
-              <div className="relative flex-1">
-                <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <input
-                  value={busqueda}
-                  onChange={(e) => setBusqueda(e.target.value)}
-                  inputMode={campo === 'CLIENTE' ? 'text' : 'numeric'}
-                  placeholder={
-                    campo === 'ORDEN'
-                      ? 'Número de orden'
-                      : campo === 'TELEFONO'
-                        ? 'Teléfono del cliente'
-                        : 'Nombre o cédula del cliente'
-                  }
-                  className="w-full rounded-r-lg border-0 bg-white py-2 pl-8 pr-3 text-sm
-                             text-slate-900 placeholder:text-slate-400 focus:outline-none"
-                />
-              </div>
-            </div>
-          </form>
+          {barraBusqueda('ml-2 hidden max-w-lg flex-1 sm:block')}
 
           <div className="ml-auto flex items-center gap-1">
             <Campana />
@@ -144,7 +152,8 @@ export default function Layout() {
               <div className="grid h-8 w-8 place-items-center rounded-full bg-marca-100 text-xs font-semibold text-marca-700">
                 {iniciales}
               </div>
-              <div className="hidden leading-tight sm:block">
+              {/* En tablet el nombre le robaba el ancho al buscador. */}
+              <div className="hidden leading-tight lg:block">
                 <p className="text-sm font-medium text-slate-900">{usuario?.nombre}</p>
                 <p className="text-xs text-slate-500">{usuario?.puesto}</p>
               </div>
@@ -160,17 +169,27 @@ export default function Layout() {
             </div>
           </div>
         </div>
+
+        {/* En un teléfono el buscador queda en 44 píxeles al lado del logo:
+            ahí baja a su propia fila, donde sí se ve lo que uno escribe. */}
+        <div className="border-t border-slate-100 px-3 pb-2 pt-1.5 sm:hidden">
+          {barraBusqueda('')}
+        </div>
       </header>
 
       <div className="flex">
         {/* ---------- Menú lateral ---------- */}
+        {/* El menú es una columna con su propio scroll: en una pantalla baja
+            —un portátil chico, una tablet acostada— los últimos renglones
+            quedaban fuera y no había cómo alcanzarlos. */}
         <aside
-          className={`fixed inset-y-0 left-0 z-30 w-60 border-r border-slate-200 bg-white
-                      pt-14 transition-transform duration-200 lg:sticky lg:top-14 lg:h-[calc(100vh-3.5rem)]
+          className={`fixed inset-y-0 left-0 z-30 flex w-60 flex-col border-r border-slate-200
+                      bg-white pt-[6.75rem] transition-transform duration-200 sm:pt-14
+                      lg:sticky lg:top-14 lg:h-[calc(100vh-3.5rem)]
                       lg:translate-x-0 lg:pt-0
                       ${menuAbierto ? 'translate-x-0' : '-translate-x-full'}`}
         >
-          <nav className="space-y-0.5 p-3">
+          <nav className="min-h-0 flex-1 space-y-0.5 overflow-y-auto overscroll-contain p-3">
             {visibles.map(({ a, texto, icono: Icono, pendientes: clave }) => {
               const cuantos = clave ? (pendientes?.[clave] ?? 0) : 0;
               return (
