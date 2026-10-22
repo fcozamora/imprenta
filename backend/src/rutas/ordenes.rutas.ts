@@ -212,6 +212,15 @@ rutasOrdenes.get('/ordenes/:id/plantilla', async (req, res, next) => {
   }
 });
 
+// Qué se le ha cambiado a la orden, con quién lo hizo y cuándo.
+rutasOrdenes.get('/ordenes/:id/cambios', async (req, res, next) => {
+  try {
+    res.json(await ordenes.cambiosDeOrden(Number(req.params.id)));
+  } catch (error) {
+    next(error);
+  }
+});
+
 // Edición completa: los datos de la orden y los campos de cada trabajo.
 // El cliente y el vendedor no viajan a propósito: quedan como se registró.
 rutasOrdenes.put(

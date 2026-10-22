@@ -258,7 +258,9 @@ export default function NuevaOrden() {
     onSuccess: (data: any) => {
       cliente0.invalidateQueries({ queryKey: ['ordenes'] });
       if (editando) {
-        cliente0.invalidateQueries({ queryKey: ['orden', id] });
+        // Sin filtrar por id: la orden se guarda con clave de número o de id,
+        // y el registro de cambios cuelga de la misma raíz.
+        cliente0.invalidateQueries({ queryKey: ['orden'] });
         navegar(`/ordenes/${id}`);
         return;
       }

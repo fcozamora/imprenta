@@ -2,6 +2,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft, Printer, MessageCircle, LoaderCircle, Clock, User, Hand, Pencil, Zap,
+  History,
 } from 'lucide-react';
 import { api, mensajeDeError } from '../lib/api';
 import { useSesion } from '../lib/sesion';
@@ -294,6 +295,44 @@ export default function DetalleOrden() {
           )}
         </div>
       ))}
+
+      <CambiosDeLaOrden ordenId={orden.id} />
+    </div>
+  );
+}
+
+/**
+ * Lo que se le ha cambiado a la orden despues de registrada, con quien lo
+ * hizo. Solo aparece si hubo cambios.
+ */
+function CambiosDeLaOrden({ ordenId }: { ordenId: number }) {
+  const { data: cambios = [] } = useQuery({
+    queryKey: ['orden', ordenId, 'cambios'],
+    queryFn: async () => (await api.get<any[]>(`/ordenes/${ordenId}/cambios`)).data,
+  });
+
+  if (!cambios.length) return null;
+
+  return (
+    <div className="tarjeta">
+      <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-900">
+        <History className="h-4 w-4 text-slate-400" />
+        Cambios de la orden ({cambios.length})
+      </h3>
+      <ol className="space-y-3">
+        {cambios.map((c) => (
+          <li key={c.id} className="border-l-2 border-slate-200 pl-3">
+            <p className="text-xs text-slate-500">
+              <strong className="text-slate-700">{c.usuario}</strong> · {fechaHora(c.creado_en)}
+            </p>
+            <ul className="mt-1 space-y-0.5">
+              {c.cambios.map((texto: string, i: number) => (
+                <li key={i} className="text-sm text-slate-600">{texto}</li>
+              ))}
+            </ul>
+          </li>
+        ))}
+      </ol>
     </div>
   );
 }

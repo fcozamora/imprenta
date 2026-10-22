@@ -62,10 +62,10 @@ export default function BarraEtapas({
   const siguiente = flujo.find((e) => e.secuencia > secuenciaActual);
 
   function alAvanzar() {
-    // Textil entrando a Sublimación sin definir quién confecciona.
+    // Textil entrando a Confección sin definir quién la hace.
     if (
       tipoCodigo === 'TEXTIL' &&
-      siguiente?.codigo === 'SUBLIMACION' &&
+      siguiente?.codigo === 'CONFECCION' &&
       !costureraId &&
       !sinConfeccion
     ) {
@@ -337,7 +337,7 @@ function ModalNotaEntrega({
   );
 }
 
-/** El textil no se imprime sin perfil definido: queda guardado en el trabajo. */
+/** No se sublima sin perfil definido: queda guardado en el trabajo. */
 function ModalPerfil({
   enviando, onCerrar, onConfirmar,
 }: {
@@ -350,7 +350,7 @@ function ModalPerfil({
   return (
     <Caja titulo="Perfil de impresión" icono={Printer} onCerrar={onCerrar} cerrarAlTocarFuera={false}>
       <p className="mb-3 text-sm text-slate-500">
-        Indique con qué perfil se va a imprimir este trabajo. Queda guardado en la orden.
+        Indique con qué perfil se va a sublimar este trabajo. Queda guardado en la orden.
       </p>
 
       <input

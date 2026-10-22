@@ -675,6 +675,10 @@ export async function actualizarCompleta(
     (lineasActuales as any[]).map((l) => [l.id as number, l])
   );
 
+  // Cómo estaba antes, para poder contar después qué fue lo que cambió.
+  const comoEstaba = await plantilla(id);
+  const nombres = await nombresDeCatalogos();
+
   if (datos.lineas.length !== actuales.size) {
     throw new ErrorHttp(
       400,
@@ -785,23 +789,203 @@ export async function actualizarCompleta(
       }
     }
 
-    await cx.query(
-      `INSERT INTO auditoria (tabla, registro_id, accion, usuario_id, datos_antes, datos_despues)
-       VALUES ('ordenes', ?, 'UPDATE', ?,
-               JSON_OBJECT('edicion', 'completa', 'urgente', ?, 'fecha_entrega', ?),
-               JSON_OBJECT('edicion', 'completa', 'urgente', ?, 'fecha_entrega', ?))`,
-      [
-        id,
-        usuarioId,
-        antes.urgente,
-        antes.fecha_entrega,
-        datos.urgente ? 1 : 0,
-        datos.fechaEntrega ?? antes.fecha_entrega,
-      ]
-    );
+    // Queda escrito qué cambió y quién lo hizo. Si no cambió nada, no se
+    // registra: un "guardar" sin tocar nada no es un cambio.
+    const cambios = describirCambios(comoEstaba, datos, nombres);
+    if (cambios.length) {
+      await cx.query(
+        `INSERT INTO auditoria (tabla, registro_id, accion, usuario_id, datos_antes, datos_despues)
+         VALUES ('ordenes', ?, 'UPDATE', ?, JSON_OBJECT('edicion', 'completa'), ?)`,
+        [id, usuarioId, JSON.stringify({ edicion: 'completa', cambios })]
+      );
+    }
   });
 
   return obtener(id);
+}
+
+// ------------------------------------------------- Registro de cambios
+
+/** Deja todo como texto comparable: null, '' y undefined son lo mismo. */
+function textoDe(valor: any): string {
+  if (valor === null || valor === undefined || valor === '') return '';
+  if (typeof valor === 'boolean') return valor ? 'Sí' : 'No';
+  if (typeof valor === 'number') return String(valor);
+  if (valor instanceof Date) return valor.toISOString().slice(0, 10);
+  return String(valor).trim();
+}
+
+/** Catálogos chicos, para que el registro diga nombres y no números. */
+async function nombresDeCatalogos() {
+  const tabla = async (sql: string) => {
+    const [filas] = await pool.query(sql);
+    return new Map((filas as any[]).map((f) => [Number(f.id), String(f.nombre)]));
+  };
+  const [papeles, tamanos, copias, materiales, telas, sobres, tintas] = await Promise.all([
+    tabla(`SELECT id, nombre FROM tipos_papel`),
+    tabla(`SELECT id, nombre FROM tamanos_talonario`),
+    tabla(`SELECT id, nombre FROM tipos_copia`),
+    tabla(`SELECT id, nombre FROM materiales_latex`),
+    tabla(`SELECT id, nombre FROM telas`),
+    tabla(`SELECT id, nombre FROM tipos_sobre`),
+    tabla(`SELECT id, nombre FROM tintas`),
+  ]);
+  return { papeles, tamanos, copias, materiales, telas, sobres, tintas };
+}
+
+type Nombres = Awaited<ReturnType<typeof nombresDeCatalogos>>;
+
+/** Pone la línea que llega del formulario con la misma forma que la plantilla. */
+function aplanarLinea(l: LineaOrden & { lineaId: number }) {
+  const t = l.talonario;
+  return {
+    nombreTrabajo: l.nombreTrabajo,
+    cantidad: l.cantidad,
+    precio: l.precio ?? '',
+    archivoSinCambios: l.archivoSinCambios === true,
+    observaciones: l.observaciones ?? '',
+    cantidadBlocks: t?.cantidadBlocks ?? '',
+    hojasPorBlock: t?.hojasPorBlock ?? '',
+    tamanoId: t?.tamanoId ?? '',
+    tamanoOtro: t?.tamanoOtro ?? '',
+    tipoCopiaId: t?.tipoCopiaId ?? '',
+    tinta: t?.tinta ?? l.sobre?.tinta ?? '',
+    encolado: t?.encolado === true,
+    perforado: t?.perforado === true,
+    grapado: t?.grapado === true,
+    carbon: t?.carbon === true,
+    numeracionInicial: t?.numeracionInicial ?? '',
+    papeles: (t?.copias ?? []).map((c) => c.papelId),
+    tipoSobreId: l.sobre?.tipoSobreId ?? '',
+    tamano: l.latex?.tamano ?? '',
+    materialId: l.latex?.materialId ?? '',
+    telaId: l.textil?.telaId ?? '',
+    perfilImpresion: l.textil?.perfilImpresion ?? '',
+    codigoSello: l.sello?.codigoSello ?? '',
+    tintaId: l.sello?.tintaId ?? '',
+  };
+}
+
+/**
+ * Compara la orden como estaba contra la que llega y describe en palabras
+ * lo que cambió, para que el registro se pueda leer sin saber de tablas.
+ */
+function describirCambios(antes: any, datos: OrdenCompleta, n: Nombres): string[] {
+  const cambios: string[] = [];
+
+  const comparar = (
+    etiqueta: string,
+    a: any,
+    d: any,
+    formato: (v: any) => string = textoDe
+  ) => {
+    const va = textoDe(a) === '' ? '' : formato(a);
+    const vd = textoDe(d) === '' ? '' : formato(d);
+    if (va === vd) return;
+    cambios.push(`${etiqueta}: ${va || '—'} → ${vd || '—'}`);
+  };
+
+  // dd/mm/aaaa, que es como se leen aquí.
+  const comoFecha = (v: any) => {
+    const t = textoDe(v).slice(0, 10);
+    const p = t.split('-');
+    return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : t;
+  };
+  const MEDIOS: Record<string, string> = {
+    WHATSAPP: 'WhatsApp',
+    EMAIL: 'Correo electrónico',
+    VENDEDOR: 'Muestra a vendedor(a)',
+  };
+
+  // La fecha de ingreso solo se pisa si viene: si no, la consulta la deja
+  // como estaba y no hay nada que anotar.
+  if (datos.fechaIngreso) {
+    comparar('Fecha de ingreso', antes.fechaIngreso, datos.fechaIngreso, comoFecha);
+  }
+  // Igual que arriba: la entrega solo se cambia en una orden urgente con
+  // fecha acordada; si no, la consulta la deja como estaba.
+  if (datos.urgente && datos.fechaEntrega) {
+    comparar('Fecha de entrega', antes.fechaEntrega, datos.fechaEntrega, comoFecha);
+  }
+  comparar('Urgente', antes.urgente, datos.urgente === true);
+  comparar('Motivo de urgencia', antes.motivoUrgencia, datos.motivoUrgencia);
+  comparar(
+    'Enviar muestra por',
+    antes.medioMuestra,
+    datos.medioMuestra,
+    (v) => MEDIOS[textoDe(v)] ?? textoDe(v)
+  );
+  comparar('Correo de la muestra', antes.emailMuestra, datos.emailMuestra);
+  comparar('Observaciones de la orden', antes.observaciones, datos.observaciones);
+
+  const porId = (mapa: Map<number, string>) => (v: any) =>
+    mapa.get(Number(v)) ?? textoDe(v);
+
+  for (const linea of datos.lineas) {
+    const previa = antes.lineas.find((x: any) => x.lineaId === linea.lineaId);
+    if (!previa) continue;
+    const ahora = aplanarLinea(linea);
+    const rotulo = previa.nombreTrabajo || `Trabajo ${linea.lineaId}`;
+    const del = (campo: string) => `${rotulo} · ${campo}`;
+
+    comparar(del('Nombre'), previa.nombreTrabajo, ahora.nombreTrabajo);
+    comparar(del('Cantidad'), previa.cantidad, ahora.cantidad);
+    comparar(del('Precio'), previa.precio, ahora.precio);
+    comparar(del('Archivo sin cambios'), previa.archivoSinCambios, ahora.archivoSinCambios);
+    comparar(del('Observaciones'), previa.observaciones, ahora.observaciones);
+    comparar(del('Blocks'), previa.cantidadBlocks, ahora.cantidadBlocks);
+    comparar(del('Hojas por block'), previa.hojasPorBlock, ahora.hojasPorBlock);
+    comparar(del('Tamaño'), previa.tamanoId, ahora.tamanoId, porId(n.tamanos));
+    comparar(del('Tamaño'), previa.tamanoOtro, ahora.tamanoOtro);
+    comparar(del('Copias'), previa.tipoCopiaId, ahora.tipoCopiaId, porId(n.copias));
+    comparar(del('Tinta'), previa.tinta, ahora.tinta);
+    comparar(del('Encolado'), previa.encolado, ahora.encolado);
+    comparar(del('Perforado'), previa.perforado, ahora.perforado);
+    comparar(del('Grapado'), previa.grapado, ahora.grapado);
+    comparar(del('Carbón'), previa.carbon, ahora.carbon);
+    comparar(del('Numeración inicial'), previa.numeracionInicial, ahora.numeracionInicial);
+    comparar(del('Tipo de sobre'), previa.tipoSobreId, ahora.tipoSobreId, porId(n.sobres));
+    comparar(del('Medida'), previa.tamano, ahora.tamano);
+    comparar(del('Material'), previa.materialId, ahora.materialId, porId(n.materiales));
+    comparar(del('Tela'), previa.telaId, ahora.telaId, porId(n.telas));
+    comparar(del('Perfil de impresión'), previa.perfilImpresion, ahora.perfilImpresion);
+    comparar(del('Código de sello'), previa.codigoSello, ahora.codigoSello);
+    comparar(del('Tinta del sello'), previa.tintaId, ahora.tintaId, porId(n.tintas));
+
+    const papelesAntes = (previa.papeles ?? []).map((p: number) => n.papeles.get(p) ?? p).join(' / ');
+    const papelesAhora = ahora.papeles.map((p) => n.papeles.get(p) ?? p).join(' / ');
+    if (papelesAntes !== papelesAhora) {
+      cambios.push(`${del('Color de copias')}: ${papelesAntes || '—'} → ${papelesAhora || '—'}`);
+    }
+  }
+
+  return cambios;
+}
+
+/** Lo que se le hizo a la orden, con quién y cuándo. */
+export async function cambiosDeOrden(id: number, limite = 30) {
+  const [filas] = await pool.query(
+    `SELECT a.id, a.creado_en, a.datos_despues, u.nombre_completo AS usuario
+       FROM auditoria a
+       LEFT JOIN usuarios u ON u.id = a.usuario_id
+      WHERE a.tabla = 'ordenes' AND a.registro_id = ? AND a.accion = 'UPDATE'
+      ORDER BY a.id DESC
+      LIMIT ?`,
+    [id, limite]
+  );
+  return (filas as any[])
+    .map((f) => {
+      const datos = typeof f.datos_despues === 'string'
+        ? JSON.parse(f.datos_despues)
+        : f.datos_despues;
+      return {
+        id: f.id,
+        usuario: f.usuario ?? 'Sistema',
+        creado_en: f.creado_en,
+        cambios: Array.isArray(datos?.cambios) ? (datos.cambios as string[]) : [],
+      };
+    })
+    .filter((f) => f.cambios.length > 0);
 }
 
 /** Borra el detalle específico para poder volver a insertarlo. */
@@ -963,13 +1147,16 @@ export async function avanzarEtapa(lineaId: number, usuarioId: number, datos: Da
 
   const esTextil = info.tipo_codigo === 'TEXTIL';
 
-  // Un textil no se imprime sin perfil de impresión definido.
-  if (esTextil && info.siguiente_codigo === 'IMPRESION') {
+  // Cada dato se pide al entrar a la etapa que lo usa, no antes: marcar una
+  // etapa significa que el trabajo está ahí, no que ya se termino.
+  //
+  // Sublimación es donde se usa el perfil.
+  if (esTextil && info.siguiente_codigo === 'SUBLIMACION') {
     const perfil = datos.perfilImpresion?.trim() || info.perfil_actual;
     if (!perfil) {
       throw new ErrorHttp(
         400,
-        'Debe indicar el perfil de impresión antes de imprimir',
+        'Debe indicar el perfil de impresión para sublimar',
         'PERFIL_REQUERIDO'
       );
     }
@@ -981,8 +1168,8 @@ export async function avanzarEtapa(lineaId: number, usuarioId: number, datos: Da
     }
   }
 
-  // Al sublimar hay que definir quién confecciona (o que no lleva confección).
-  if (esTextil && info.siguiente_codigo === 'SUBLIMACION') {
+  // Y en Confección es donde se sabe a quién se le entrega.
+  if (esTextil && info.siguiente_codigo === 'CONFECCION') {
     const yaDefinido = info.costurera_actual != null || info.sin_confeccion_actual === 1;
     const llegaDefinido = datos.costureraId != null || datos.sinConfeccion === true;
 
