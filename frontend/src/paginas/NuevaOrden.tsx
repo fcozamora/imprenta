@@ -30,6 +30,7 @@ export default function NuevaOrden() {
   const { puede } = useSesion();
   const verPrecio = puede('ordenes.ver_precio');
   const puedeSubirMuestra = puede('archivos.subir');
+  const anotaPagos = puede('pagos.registrar');
 
   const [cliente, setCliente] = useState<Cliente | null>(null);
   const [vendedorId, setVendedorId] = useState<number | ''>('');
@@ -41,6 +42,8 @@ export default function NuevaOrden() {
   const [motivoUrgencia, setMotivoUrgencia] = useState('');
   const [fechaEntrega, setFechaEntrega] = useState('');
   const [lineas, setLineas] = useState<DatosLinea[]>([lineaVacia()]);
+  const [pagoTipo, setPagoTipo] = useState<'' | 'ABONO' | 'CANCELADA'>('');
+  const [abono, setAbono] = useState<number | ''>('');
   const [cargada, setCargada] = useState(false);
   const [error, setError] = useState('');
   const [avisoMuestras, setAvisoMuestras] = useState('');
@@ -124,6 +127,8 @@ export default function NuevaOrden() {
     setMotivoUrgencia('');
     setFechaEntrega('');
     setLineas([lineaVacia()]);
+    setPagoTipo('');
+    setAbono('');
   }
 
   /** Arma una línea con el nombre de campo que espera el servidor. */
@@ -249,6 +254,11 @@ export default function NuevaOrden() {
         ...cabecera(),
         clienteId: cliente.id,
         vendedorId: Number(vendedorId),
+        ...(pagoTipo === 'CANCELADA'
+          ? { pago: { cancelada: true } }
+          : pagoTipo === 'ABONO' && Number(abono) > 0
+            ? { pago: { abono: Number(abono) } }
+            : {}),
         lineas: lineas.map(cuerpoDeLinea),
       };
       const creadaAhora = (await api.post('/ordenes', cuerpo)).data;
@@ -563,11 +573,79 @@ export default function NuevaOrden() {
       ))}
 
       {verPrecio && totalOrden > 0 && (
-        <div className="tarjeta flex items-baseline justify-between py-3">
-          <span className="text-sm font-medium text-slate-600">Total de la orden</span>
-          <span className="text-lg font-semibold text-slate-900">
-            ₡{totalOrden.toLocaleString('es-CR', { minimumFractionDigits: 2 })}
-          </span>
+        <div className="tarjeta space-y-3 py-3">
+          <div className="flex items-baseline justify-between">
+            <span className="text-sm font-medium text-slate-600">Total de la orden</span>
+            <span className="text-lg font-semibold text-slate-900">
+              ₡{totalOrden.toLocaleString('es-CR', { minimumFractionDigits: 2 })}
+            </span>
+          </div>
+
+          {/* Lo que el cliente deja pagado al ingresar la orden */}
+          {anotaPagos && !editando && (
+            <div className="border-t border-slate-100 pt-3">
+              <label className="etiqueta">¿Deja algo pagado?</label>
+              <div className="flex flex-wrap gap-2">
+                {([
+                  ['', 'Nada todavía'],
+                  ['ABONO', 'Abona una parte'],
+                  ['CANCELADA', 'Ya está cancelada'],
+                ] as const).map(([valor, texto]) => (
+                  <button
+                    key={valor || 'nada'}
+                    type="button"
+                    onClick={() => {
+                      setPagoTipo(valor);
+                      if (valor !== 'ABONO') setAbono('');
+                    }}
+                    className={`rounded-lg px-3 py-2 text-sm font-medium transition-all
+                                duration-150 active:scale-95 ${
+                                  pagoTipo === valor
+                                    ? 'bg-marca-600 text-white shadow-sm'
+                                    : 'bg-white text-slate-700 ring-1 ring-slate-300 hover:bg-slate-50'
+                                }`}
+                  >
+                    {texto}
+                  </button>
+                ))}
+              </div>
+
+              {pagoTipo === 'ABONO' && (
+                <div className="mt-3 sm:w-1/2">
+                  <label className="etiqueta">Monto del abono</label>
+                  <div className="relative">
+                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+                      ₡
+                    </span>
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      className="campo pl-7"
+                      value={abono}
+                      autoFocus
+                      placeholder="0.00"
+                      onChange={(e) => setAbono(e.target.value === '' ? '' : Number(e.target.value))}
+                    />
+                  </div>
+                  <p className="mt-1 text-xs text-slate-500">
+                    {Number(abono) > 0
+                      ? Number(abono) >= totalOrden
+                        ? 'Cubre el total: la orden queda cancelada.'
+                        : `Queda un saldo de ₡${(totalOrden - Number(abono)).toLocaleString('es-CR', { minimumFractionDigits: 2 })}.`
+                      : 'Cuando los abonos lleguen al total, la orden se marca sola como cancelada.'}
+                  </p>
+                </div>
+              )}
+
+              {pagoTipo === 'CANCELADA' && (
+                <p className="mt-2 text-xs text-slate-500">
+                  Se anota un abono por los ₡
+                  {totalOrden.toLocaleString('es-CR', { minimumFractionDigits: 2 })} del total.
+                </p>
+              )}
+            </div>
+          )}
         </div>
       )}
 

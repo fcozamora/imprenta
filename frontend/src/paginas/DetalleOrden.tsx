@@ -11,6 +11,7 @@ import { useState } from 'react';
 import { fecha, fechaHora, numero, enlaceWhatsapp } from '../lib/formato';
 import BarraEtapas from '../componentes/BarraEtapas';
 import SubirMuestra from '../componentes/SubirMuestra';
+import PagoOrden from '../componentes/PagoOrden';
 
 export default function DetalleOrden() {
   const { id, numero: num } = useParams();
@@ -295,6 +296,10 @@ export default function DetalleOrden() {
           )}
         </div>
       ))}
+
+      {puede('ordenes.ver_precio') && orden.pago && (
+        <PagoOrden ordenId={orden.id} pago={orden.pago} abonos={orden.abonos ?? []} />
+      )}
 
       <CambiosDeLaOrden ordenId={orden.id} />
     </div>

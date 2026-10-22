@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import * as ordenes from '../servicios/ordenes.servicio.js';
 import * as costureras from '../servicios/costureras.servicio.js';
+import * as pagos from '../servicios/pagos.servicio.js';
 import {
   autenticar,
   exigirPasswordDefinitiva,
@@ -76,6 +77,13 @@ const esquemaOrden = z.object({
   motivoUrgencia: z.string().trim().max(200).optional().nullable(),
   fechaEntrega: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().nullable(),
   observaciones: z.string().trim().optional().nullable(),
+  pago: z
+    .object({
+      abono: z.number().nonnegative().optional().nullable(),
+      cancelada: z.boolean().optional(),
+      nota: z.string().trim().max(255).optional().nullable(),
+    })
+    .optional(),
   lineas: z.array(esquemaLinea).min(1, 'Agregue al menos un tipo de trabajo'),
 });
 
@@ -191,11 +199,61 @@ rutasOrdenes.get('/ordenes/:id', async (req, res, next) => {
 rutasOrdenes.post('/ordenes', requierePermiso('ordenes.crear'), async (req, res, next) => {
   try {
     const datos = esquemaOrden.parse(req.body);
-    res.status(201).json(await ordenes.crear(datos, req.usuario!.id));
+    // Quien no anota pagos puede ingresar la orden igual, pero sin tocar
+    // lo que el cliente dejo abonado.
+    const u = req.usuario!;
+    if (!u.esAdmin && !u.permisos.includes('pagos.registrar')) delete datos.pago;
+    res.status(201).json(await ordenes.crear(datos, u.id));
   } catch (error) {
     next(error);
   }
 });
+
+// ---------------------------------------------------------------- Pagos
+
+rutasOrdenes.get('/ordenes/:id/abonos', async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const [resumen, abonos] = await Promise.all([pagos.resumen(id), pagos.listar(id)]);
+    res.json({ ...resumen, abonos });
+  } catch (error) {
+    next(error);
+  }
+});
+
+rutasOrdenes.post(
+  '/ordenes/:id/abonos',
+  requierePermiso('pagos.registrar'),
+  async (req, res, next) => {
+    try {
+      const datos = z
+        .object({
+          monto: z.number().positive().optional(),
+          saldar: z.boolean().optional(),
+          nota: z.string().trim().max(255).optional().nullable(),
+        })
+        .refine((d) => d.saldar === true || (d.monto ?? 0) > 0, {
+          message: 'Indique el monto del abono',
+        })
+        .parse(req.body);
+      res.status(201).json(await pagos.registrar(Number(req.params.id), datos, req.usuario!.id));
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+rutasOrdenes.delete(
+  '/abonos/:id',
+  requierePermiso('pagos.registrar'),
+  async (req, res, next) => {
+    try {
+      res.json(await pagos.eliminar(Number(req.params.id), req.usuario!.id));
+    } catch (error) {
+      next(error);
+    }
+  }
+);
 
 // Datos de la orden con los nombres que usa el formulario, para volver a
 // pedirla (?siguienteNumeracion=true) o para editarla.

@@ -1,6 +1,7 @@
 import type { PoolConnection } from 'mysql2/promise';
 import { pool, enTransaccion } from '../db/pool.js';
 import { ErrorHttp } from '../util/errores.js';
+import * as pagos from './pagos.servicio.js';
 
 /** Categorías que trabaja el personal de imprenta. */
 const TIPOS_PRODUCCION = ['TALONARIOS', 'IMPRESION_DIGITAL', 'HP_LATEX', 'SOBRES'];
@@ -45,6 +46,8 @@ export interface NuevaOrden {
   motivoUrgencia?: string | null;
   fechaEntrega?: string | null;
   observaciones?: string | null;
+  /** Lo que el cliente dejo pagado al ingresar la orden. */
+  pago?: { abono?: number | null; cancelada?: boolean; nota?: string | null };
   lineas: LineaOrden[];
 }
 
@@ -198,6 +201,23 @@ export async function crear(datos: NuevaOrden, creadoPor: number) {
         datos.fechaEntrega,
         ordenId,
       ]);
+    }
+
+    // Lo que dejo pagado al ingresar la orden. "Cancelada" es anotar un
+    // abono por el total, no una casilla guardada aparte.
+    if (datos.pago) {
+      const [suma] = await cx.query(
+        `SELECT COALESCE(SUM(precio), 0) AS total FROM orden_lineas WHERE orden_id = ?`,
+        [ordenId]
+      );
+      const total = Number((suma as any[])[0].total);
+      const monto = datos.pago.cancelada ? total : Number(datos.pago.abono ?? 0);
+      if (monto > 0) {
+        await cx.query(
+          `INSERT INTO orden_abonos (orden_id, monto, nota, registrado_por) VALUES (?, ?, ?, ?)`,
+          [ordenId, monto, datos.pago.nota?.trim() || null, creadoPor]
+        );
+      }
     }
 
     const [orden] = await cx.query(
@@ -456,7 +476,9 @@ export async function obtener(id: number) {
     linea.detalle = await detalleDeLinea(linea.id, linea.tipo_codigo);
   }
 
-  return { ...orden, lineas };
+  const [pago, abonos] = await Promise.all([pagos.resumen(id), pagos.listar(id)]);
+
+  return { ...orden, lineas, pago, abonos };
 }
 
 async function flujoDeLinea(tipoTrabajoId: number, sinCambios: boolean) {

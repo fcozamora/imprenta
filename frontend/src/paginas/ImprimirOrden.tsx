@@ -141,14 +141,28 @@ export default function ImprimirOrden() {
         )}
 
         {verPrecio && orden.lineas.some((l: any) => l.precio != null) && (
-          <div className="total-orden">
-            <span>Total de la orden</span>
-            <strong>
-              {colones(
-                orden.lineas.reduce((s: number, l: any) => s + Number(l.precio ?? 0), 0)
-              )}
-            </strong>
-          </div>
+          <>
+            <div className="total-orden">
+              <span>Total de la orden</span>
+              <strong>
+                {colones(
+                  orden.lineas.reduce((s: number, l: any) => s + Number(l.precio ?? 0), 0)
+                )}
+              </strong>
+            </div>
+            {orden.pago && orden.pago.abonado > 0 && (
+              <div className="total-orden sin-linea">
+                {orden.pago.estado === 'CANCELADA' ? (
+                  <strong>CANCELADA</strong>
+                ) : (
+                  <>
+                    <span>Abonado {colones(orden.pago.abonado)}</span>
+                    <strong>Saldo {colones(orden.pago.saldo)}</strong>
+                  </>
+                )}
+              </div>
+            )}
+          </>
         )}
 
         {/* ---------- Firmas ---------- */}

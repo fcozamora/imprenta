@@ -163,6 +163,8 @@
   font-size: 9.5pt;
 }
 .total-orden strong { font-size: 12pt; }
+.total-orden.sin-linea { border-top: 0; margin-top: 0.5mm; padding-top: 0; font-size: 9pt; }
+.total-orden.sin-linea strong { font-size: 10pt; }
 .trabajo-datos { display: grid; grid-template-columns: repeat(5, 1fr); gap: 1.5mm 3mm; }
 .observaciones { margin-top: 1.5mm; font-size: 8.5pt; }
 .observaciones-orden { margin-top: 2mm; font-size: 8.5pt; }
