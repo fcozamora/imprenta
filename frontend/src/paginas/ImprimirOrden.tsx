@@ -188,16 +188,19 @@ function Dato({ rotulo, valor, ancho }: { rotulo: string; valor?: string | null;
 /** Los campos varían según la categoría del trabajo. */
 function DetalleLinea({ linea }: { linea: any }) {
   const d = linea.detalle;
-  const campos: Array<[string, string]> = [];
+  // El tercer valor es cuántas columnas ocupa: los campos largos —papeles,
+  // acabados, tamaños escritos a mano— piden más espacio para no partirse
+  // en pedacitos dentro de una columna angosta.
+  const campos: Array<[string, string, number?]> = [];
 
   switch (linea.tipo_codigo) {
     case 'TALONARIOS':
       if (d) {
         campos.push(['Blocks', `${d.cantidad_blocks} de ${d.hojas_por_block}`]);
         campos.push(['Total hojas', String(d.total_hojas)]);
-        campos.push(['Tamaño', d.tamano ?? d.tamano_otro ?? '—']);
+        campos.push(['Tamaño', d.tamano ?? d.tamano_otro ?? '—', 2]);
         campos.push(['Copias', d.tipo_copia]);
-        campos.push(['Tinta', d.tinta]);
+        campos.push(['Tinta', d.tinta, 2]);
         if (d.numeracion_inicial != null) {
           campos.push(['Numeración', `${d.numeracion_inicial} al ${d.numeracion_final}`]);
         }
@@ -207,39 +210,39 @@ function DetalleLinea({ linea }: { linea: any }) {
           d.grapado && 'Grapado',
           d.carbon && 'Carbón',
         ].filter(Boolean);
-        if (acabados.length) campos.push(['Acabados', acabados.join(', ')]);
+        if (acabados.length) campos.push(['Acabados', acabados.join(', '), 2]);
         if (d.copias?.length) {
-          campos.push(['Papeles', d.copias.map((c: any) => c.papel).join(' / ')]);
+          campos.push(['Papeles', d.copias.map((c: any) => c.papel).join(' / '), 3]);
         }
       }
       break;
     case 'SOBRES':
       campos.push(['Cantidad', String(linea.cantidad)]);
       if (d) {
-        campos.push(['Tipo', d.tipo_sobre]);
-        campos.push(['Tinta', d.tinta]);
+        campos.push(['Tipo', d.tipo_sobre, 2]);
+        campos.push(['Tinta', d.tinta, 2]);
       }
       break;
     case 'HP_LATEX':
     case 'IMPRESION_DIGITAL':
       campos.push(['Cantidad', String(linea.cantidad)]);
       if (d) {
-        campos.push(['Tamaño', d.tamano]);
-        campos.push(['Material', d.material]);
+        campos.push(['Tamaño', d.tamano, 2]);
+        campos.push(['Material', d.material, 2]);
       }
       break;
     case 'TEXTIL':
       campos.push(['Cantidad', String(linea.cantidad)]);
       if (d) {
-        campos.push(['Tela', d.tela]);
-        if (d.perfil_impresion) campos.push(['Perfil', d.perfil_impresion]);
-        if (d.costurera) campos.push(['Costurera', d.costurera]);
+        campos.push(['Tela', d.tela, 2]);
+        if (d.perfil_impresion) campos.push(['Perfil', d.perfil_impresion, 2]);
+        if (d.costurera) campos.push(['Costurera', d.costurera, 2]);
       }
       break;
     case 'SELLOS':
       campos.push(['Cantidad', String(linea.cantidad)]);
-      if (d?.codigo_sello) campos.push(['Código', d.codigo_sello]);
-      if (d?.tinta) campos.push(['Tinta', d.tinta]);
+      if (d?.codigo_sello) campos.push(['Código', d.codigo_sello, 2]);
+      if (d?.tinta) campos.push(['Tinta', d.tinta, 2]);
       break;
     default:
       campos.push(['Cantidad', String(linea.cantidad)]);
@@ -247,8 +250,11 @@ function DetalleLinea({ linea }: { linea: any }) {
 
   return (
     <>
-      {campos.map(([rotulo, valor]) => (
-        <div key={rotulo} className="dato">
+      {campos.map(([rotulo, valor, columnas]) => (
+        <div
+          key={rotulo}
+          className={columnas === 3 ? 'dato muy-ancho' : columnas === 2 ? 'dato ancho' : 'dato'}
+        >
           <span className="dato-rotulo">{rotulo}</span>
           <span className="dato-valor">{valor}</span>
         </div>
