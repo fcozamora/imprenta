@@ -26,6 +26,8 @@ export interface LineaOrden {
   tipoTrabajoId: number;
   nombreTrabajo: string;
   cantidad: number;
+  /** Diseñador al que ya se le asigna el trabajo al ingresar la orden. */
+  disenadorId?: number | null;
   precio?: number | null;
   archivoSinCambios?: boolean;
   observaciones?: string | null;
@@ -169,11 +171,13 @@ export async function crear(datos: NuevaOrden, creadoPor: number) {
     const ordenId = (resultado as any).insertId;
 
     for (const linea of datos.lineas) {
+      // El diseñador se asigna, no se "toma": tomada_en queda en blanco
+      // para que el trabajo no cuente como ya avanzado.
       const [res] = await cx.query(
         `INSERT INTO orden_lineas
            (orden_id, linea, tipo_trabajo_id, nombre_trabajo, cantidad, precio,
-            archivo_sin_cambios, observaciones)
-         VALUES (?, 0, ?, ?, ?, ?, ?, ?)`,
+            archivo_sin_cambios, observaciones, disenador_id)
+         VALUES (?, 0, ?, ?, ?, ?, ?, ?, ?)`,
         [
           ordenId,
           linea.tipoTrabajoId,
@@ -182,6 +186,7 @@ export async function crear(datos: NuevaOrden, creadoPor: number) {
           linea.precio ?? null,
           linea.archivoSinCambios ? 1 : 0,
           linea.observaciones ?? null,
+          linea.disenadorId ?? null,
         ]
       );
       const lineaId = (res as any).insertId;
@@ -234,6 +239,56 @@ export async function crear(datos: NuevaOrden, creadoPor: number) {
   });
 }
 
+// ---------------------------------------------------------------- Sugerencias
+
+/**
+ * Nombres de trabajo que ya se han usado, para sugerirlos al escribir.
+ * Primero los de este cliente —"Factura de contado" suele ser el mismo
+ * trabajo cada vez— y después los más pedidos de toda la imprenta.
+ *
+ * Sale de productos_cliente, que ya se va llenando solo con cada orden.
+ */
+export async function nombresDeTrabajo(clienteId?: number, limite = 150) {
+  const nombres: string[] = [];
+  const vistos = new Set<string>();
+
+  const agregar = (filas: any[]) => {
+    for (const f of filas) {
+      const n = String(f.nombre_trabajo).trim();
+      const clave = n.toLowerCase();
+      if (!n || vistos.has(clave)) continue;
+      vistos.add(clave);
+      nombres.push(n);
+      if (nombres.length >= limite) break;
+    }
+  };
+
+  if (clienteId) {
+    const [suyos] = await pool.query(
+      `SELECT nombre_trabajo FROM productos_cliente
+        WHERE cliente_id = ?
+        ORDER BY ultima_fecha DESC, veces_solicitado DESC
+        LIMIT ?`,
+      [clienteId, limite]
+    );
+    agregar(suyos as any[]);
+  }
+
+  if (nombres.length < limite) {
+    const [todos] = await pool.query(
+      `SELECT nombre_trabajo, SUM(veces_solicitado) AS veces
+         FROM productos_cliente
+        GROUP BY nombre_trabajo
+        ORDER BY veces DESC, MAX(ultima_fecha) DESC
+        LIMIT ?`,
+      [limite]
+    );
+    agregar(todos as any[]);
+  }
+
+  return nombres;
+}
+
 // ---------------------------------------------------------------- Plantilla
 
 /**
@@ -262,7 +317,7 @@ export async function plantilla(id: number, siguienteNumeracion = false) {
     `SELECT ol.id, ol.tipo_trabajo_id, tt.codigo AS tipo_codigo, tt.nombre AS tipo_trabajo,
             ol.nombre_trabajo, ol.cantidad, ol.precio, ol.archivo_sin_cambios,
             ol.observaciones, ol.secuencia_actual, ol.tomada_en, ol.finalizada,
-            ol.entregada, e.nombre AS etapa,
+            ol.entregada, ol.disenador_id, e.nombre AS etapa,
             (SELECT MAX(la.id) FROM linea_archivos la WHERE la.linea_id = ol.id)
               AS muestra_archivo_id
        FROM orden_lineas ol
@@ -285,6 +340,7 @@ export async function plantilla(id: number, siguienteNumeracion = false) {
       precio: l.precio === null ? '' : Number(l.precio),
       archivoSinCambios: l.archivo_sin_cambios === 1,
       observaciones: l.observaciones ?? '',
+      disenadorId: l.disenador_id ?? '',
       etapa: l.etapa,
       // Para "pedir de nuevo": la muestra que ya traía ese trabajo, para
       // engancharla a la orden nueva sin volver a subirla.
@@ -769,7 +825,8 @@ export async function actualizarCompleta(
                 cantidad            = ?,
                 precio              = ?,
                 archivo_sin_cambios = ?,
-                observaciones       = ?
+                observaciones       = ?,
+                disenador_id        = ?
           WHERE id = ? AND orden_id = ?`,
         [
           linea.nombreTrabajo,
@@ -777,6 +834,7 @@ export async function actualizarCompleta(
           linea.precio ?? null,
           sinCambios ? 1 : 0,
           linea.observaciones ?? null,
+          linea.disenadorId ?? null,
           linea.lineaId,
           id,
         ]
@@ -843,7 +901,8 @@ async function nombresDeCatalogos() {
     const [filas] = await pool.query(sql);
     return new Map((filas as any[]).map((f) => [Number(f.id), String(f.nombre)]));
   };
-  const [papeles, tamanos, copias, materiales, telas, sobres, tintas] = await Promise.all([
+  const [papeles, tamanos, copias, materiales, telas, sobres, tintas, personas] =
+    await Promise.all([
     tabla(`SELECT id, nombre FROM tipos_papel`),
     tabla(`SELECT id, nombre FROM tamanos_talonario`),
     tabla(`SELECT id, nombre FROM tipos_copia`),
@@ -851,8 +910,9 @@ async function nombresDeCatalogos() {
     tabla(`SELECT id, nombre FROM telas`),
     tabla(`SELECT id, nombre FROM tipos_sobre`),
     tabla(`SELECT id, nombre FROM tintas`),
+    tabla(`SELECT id, nombre_completo AS nombre FROM usuarios`),
   ]);
-  return { papeles, tamanos, copias, materiales, telas, sobres, tintas };
+  return { papeles, tamanos, copias, materiales, telas, sobres, tintas, personas };
 }
 
 type Nombres = Awaited<ReturnType<typeof nombresDeCatalogos>>;
@@ -863,6 +923,7 @@ function aplanarLinea(l: LineaOrden & { lineaId: number }) {
   return {
     nombreTrabajo: l.nombreTrabajo,
     cantidad: l.cantidad,
+    disenadorId: l.disenadorId ?? '',
     precio: l.precio ?? '',
     archivoSinCambios: l.archivoSinCambios === true,
     observaciones: l.observaciones ?? '',
@@ -952,6 +1013,7 @@ function describirCambios(antes: any, datos: OrdenCompleta, n: Nombres): string[
 
     comparar(del('Nombre'), previa.nombreTrabajo, ahora.nombreTrabajo);
     comparar(del('Cantidad'), previa.cantidad, ahora.cantidad);
+    comparar(del('Diseñador'), previa.disenadorId, ahora.disenadorId, porId(n.personas));
     comparar(del('Precio'), previa.precio, ahora.precio);
     comparar(del('Archivo sin cambios'), previa.archivoSinCambios, ahora.archivoSinCambios);
     comparar(del('Observaciones'), previa.observaciones, ahora.observaciones);

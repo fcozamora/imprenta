@@ -22,6 +22,7 @@ export interface Catalogos {
   telas: Array<{ id: number; nombre: string }>;
   tintas: Array<{ id: number; nombre: string; hex: string }>;
   vendedores: Array<{ id: number; nombre: string }>;
+  disenadores: Array<{ id: number; nombre: string }>;
   costureras: Array<{ id: number; nombre: string }>;
   tallas: Array<{ id: number; genero: 'MUJER' | 'HOMBRE'; nombre: string }>;
 }

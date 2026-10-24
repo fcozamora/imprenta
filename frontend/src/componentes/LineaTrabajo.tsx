@@ -35,6 +35,8 @@ export interface DatosLinea {
   tipoTrabajoId: number | '';
   nombreTrabajo: string;
   cantidad: number | '';
+  /** Diseñador al que se le asigna el trabajo desde el inicio. */
+  disenadorId: number | '';
   precio: number | '';
   archivoSinCambios: boolean;
   observaciones: string;
@@ -64,7 +66,8 @@ export interface DatosLinea {
 export function lineaVacia(): DatosLinea {
   return {
     clave: nuevoId(), muestra: null, muestraArchivoId: null,
-    tipoTrabajoId: '', nombreTrabajo: '', cantidad: '', precio: '', archivoSinCambios: false,
+    tipoTrabajoId: '', nombreTrabajo: '', cantidad: '', disenadorId: '',
+    precio: '', archivoSinCambios: false,
     observaciones: '', cantidadBlocks: '', hojasPorBlock: '', tamanoId: '', tamanoOtro: '',
     tipoCopiaId: '', tinta: '', encolado: false, perforado: false, grapado: false, carbon: false,
     numeracionInicial: '', papeles: [], tipoSobreId: '', tamano: '', materialId: '',
@@ -98,13 +101,16 @@ interface Props {
   puedeSubirMuestra?: boolean;
   /** Cliente de la orden, para ofrecerle su banco de muestras. */
   clienteId?: number | null;
+  /** Nombres de trabajo ya usados, para sugerirlos al escribir. */
+  sugerencias?: string[];
   onCambio: (cambios: Partial<DatosLinea>) => void;
   onEliminar: () => void;
 }
 
 export default function LineaTrabajo({
   linea, indice, catalogos, puedeEliminar, verPrecio = false,
-  editando = false, puedeSubirMuestra = false, clienteId = null, onCambio, onEliminar,
+  editando = false, puedeSubirMuestra = false, clienteId = null, sugerencias = [],
+  onCambio, onEliminar,
 }: Props) {
   const entradaMuestra = useRef<HTMLInputElement>(null);
   const [abrirBanco, setAbrirBanco] = useState(false);
@@ -232,12 +238,21 @@ export default function LineaTrabajo({
           <div className="grid gap-3 sm:grid-cols-3">
             <div className="sm:col-span-2">
               <label className="etiqueta">Nombre del trabajo <span className="text-red-500">*</span></label>
+              {/* Las sugerencias salen de los trabajos que ya se le han hecho
+                  al cliente y de los mas pedidos de la imprenta. */}
               <input
                 className="campo"
                 value={linea.nombreTrabajo}
+                list={`trabajos-${linea.clave}`}
+                autoComplete="off"
                 onChange={(e) => onCambio({ nombreTrabajo: e.target.value })}
                 placeholder="Ej. Factura timbrada"
               />
+              <datalist id={`trabajos-${linea.clave}`}>
+                {sugerencias.map((n) => (
+                  <option key={n} value={n} />
+                ))}
+              </datalist>
             </div>
             <div>
               <label className="etiqueta">
@@ -279,6 +294,29 @@ export default function LineaTrabajo({
               <p className="mt-1 text-xs text-slate-500">
                 Sale en la orden impresa, pero solo cuando la imprime alguien que puede ver
                 precios.
+              </p>
+            </div>
+          )}
+
+          {/* Un trabajo de archivo suele salir ya asignado, sin esperar a que
+              alguien lo agarre del tablero. */}
+          {catalogos.disenadores.length > 0 && (
+            <div className="sm:w-1/2">
+              <label className="etiqueta">Diseñador asignado</label>
+              <select
+                className="campo"
+                value={linea.disenadorId}
+                onChange={(e) =>
+                  onCambio({ disenadorId: e.target.value ? Number(e.target.value) : '' })
+                }
+              >
+                <option value="">Sin asignar</option>
+                {catalogos.disenadores.map((d) => (
+                  <option key={d.id} value={d.id}>{d.nombre}</option>
+                ))}
+              </select>
+              <p className="mt-1 text-xs text-slate-500">
+                Si lo deja sin asignar, lo toma quien lo agarre del tablero.
               </p>
             </div>
           )}

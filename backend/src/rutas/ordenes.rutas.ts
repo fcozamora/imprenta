@@ -41,6 +41,7 @@ const esquemaLinea = z.object({
   tipoTrabajoId: z.number().int().positive(),
   nombreTrabajo: z.string().trim().min(2, 'El nombre del trabajo es obligatorio'),
   cantidad: z.number().int().positive('La cantidad debe ser mayor a cero'),
+  disenadorId: z.number().int().positive().optional().nullable(),
   precio: z.number().nonnegative().optional().nullable(),
   archivoSinCambios: z.boolean().optional(),
   observaciones: z.string().trim().optional().nullable(),
@@ -143,6 +144,19 @@ rutasOrdenes.get('/confeccion', requierePermiso('confeccion.ver'), async (req, r
     res.json(
       await ordenes.confeccionTextil(
         req.query.costurera ? Number(req.query.costurera) : undefined
+      )
+    );
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Nombres de trabajo ya usados, para sugerirlos al escribir.
+rutasOrdenes.get('/nombres-trabajo', async (req, res, next) => {
+  try {
+    res.json(
+      await ordenes.nombresDeTrabajo(
+        req.query.clienteId ? Number(req.query.clienteId) : undefined
       )
     );
   } catch (error) {

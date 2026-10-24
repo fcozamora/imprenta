@@ -123,6 +123,7 @@ export default function ImprimirOrden() {
                 )}
               </div>
               <div className="trabajo-datos">
+                {l.disenador && <Dato rotulo="Diseñador" valor={l.disenador} ancho />}
                 <DetalleLinea linea={l} />
               </div>
               {l.observaciones && (

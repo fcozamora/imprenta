@@ -107,6 +107,18 @@ export default function NuevaOrden() {
     setCargada(true);
   }, [plantilla, cargada, editando]);
 
+  // Nombres de trabajo ya usados: primero los de este cliente.
+  const { data: sugerencias = [] } = useQuery({
+    queryKey: ['nombres-trabajo', cliente?.id ?? null],
+    queryFn: async () =>
+      (
+        await api.get<string[]>('/nombres-trabajo', {
+          params: cliente ? { clienteId: cliente.id } : {},
+        })
+      ).data,
+    staleTime: 5 * 60_000,
+  });
+
   const totalOrden = lineas.reduce((s, l) => s + (Number(l.precio) || 0), 0);
   const hayAvanzadas = editando && lineas.some((l) => l.avanzada);
 
@@ -141,6 +153,7 @@ export default function NuevaOrden() {
       tipoTrabajoId: Number(l.tipoTrabajoId),
       nombreTrabajo: l.nombreTrabajo.trim(),
       cantidad: Number(l.cantidad) || 1,
+      disenadorId: l.disenadorId === '' ? null : Number(l.disenadorId),
       precio: l.precio === '' ? null : Number(l.precio),
       archivoSinCambios: l.archivoSinCambios,
       observaciones: l.observaciones.trim() || null,
@@ -567,6 +580,7 @@ export default function NuevaOrden() {
           editando={editando}
           puedeSubirMuestra={puedeSubirMuestra}
           clienteId={cliente?.id ?? null}
+          sugerencias={sugerencias}
           onCambio={(cambios) => actualizarLinea(linea.clave, cambios)}
           onEliminar={() => setLineas((ls) => ls.filter((l) => l.clave !== linea.clave))}
         />

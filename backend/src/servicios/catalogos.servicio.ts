@@ -15,6 +15,7 @@ export async function todos() {
     telas,
     tintas,
     vendedores,
+    disenadores,
     costureras,
     tallas,
   ] = await Promise.all([
@@ -57,6 +58,17 @@ export async function todos() {
         WHERE u.activo = 1 AND u.cedula <> '000000000'
         ORDER BY u.apellido, u.nombre`
     ),
+    pool.query(
+      // Quienes pueden tomar trabajo de diseño: es a ellos a quienes se les
+      // puede asignar la orden desde el principio. Igual que con los
+      // vendedores, la cuenta de administracion del sistema no se ofrece.
+      `SELECT u.id, u.nombre_completo AS nombre
+         FROM usuarios u
+         JOIN puesto_permisos pp ON pp.puesto_id = u.puesto_id
+        WHERE u.activo = 1 AND u.cedula <> '000000000'
+          AND pp.permiso_codigo = 'ordenes.tomar'
+        ORDER BY u.apellido, u.nombre`
+    ),
     pool.query(`SELECT id, nombre FROM costureras WHERE activo = 1 ORDER BY nombre`),
     pool.query(
       `SELECT id, genero, nombre FROM tallas_camiseta WHERE activo = 1
@@ -77,6 +89,7 @@ export async function todos() {
     telas: telas[0],
     tintas: tintas[0],
     vendedores: vendedores[0],
+    disenadores: disenadores[0],
     costureras: costureras[0], 
     tallas: tallas[0],
   };
