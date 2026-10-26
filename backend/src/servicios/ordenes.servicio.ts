@@ -731,7 +731,8 @@ export interface OrdenCompleta {
 export async function actualizarCompleta(
   id: number,
   datos: OrdenCompleta,
-  usuarioId: number
+  usuarioId: number,
+  puedeVerPrecio = true
 ) {
   const [filas] = await pool.query(
     `SELECT id, estado, urgente, fecha_entrega FROM ordenes WHERE id = ?`,
@@ -756,6 +757,15 @@ export async function actualizarCompleta(
   // Cómo estaba antes, para poder contar después qué fue lo que cambió.
   const comoEstaba = await plantilla(id);
   const nombres = await nombresDeCatalogos();
+
+  // A quien no ve precios tampoco se le toma el precio que mande: su
+  // formulario los trae vacíos, y guardar la orden los borraría.
+  if (!puedeVerPrecio) {
+    for (const linea of datos.lineas) {
+      const previa = comoEstaba.lineas.find((x: any) => x.lineaId === linea.lineaId);
+      linea.precio = previa && previa.precio !== '' ? Number(previa.precio) : null;
+    }
+  }
 
   if (datos.lineas.length !== actuales.size) {
     throw new ErrorHttp(
@@ -1066,6 +1076,9 @@ export async function cambiosDeOrden(id: number, limite = 30) {
         id: f.id,
         usuario: f.usuario ?? 'Sistema',
         creado_en: f.creado_en,
+        // 'pago' o 'completa': sirve para no mostrarle los montos a quien no
+        // tiene permiso de verlos.
+        edicion: typeof datos?.edicion === 'string' ? datos.edicion : 'completa',
         cambios: Array.isArray(datos?.cambios) ? (datos.cambios as string[]) : [],
       };
     })

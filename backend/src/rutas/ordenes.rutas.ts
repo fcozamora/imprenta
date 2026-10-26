@@ -3,14 +3,60 @@ import { z } from 'zod';
 import * as ordenes from '../servicios/ordenes.servicio.js';
 import * as costureras from '../servicios/costureras.servicio.js';
 import * as pagos from '../servicios/pagos.servicio.js';
+import type { Request } from 'express';
 import {
   autenticar,
   exigirPasswordDefinitiva,
   requierePermiso,
+  tienePermiso,
 } from '../middleware/autenticar.js';
 
 export const rutasOrdenes = Router();
 rutasOrdenes.use(autenticar, exigirPasswordDefinitiva);
+
+// ------------------------------------------------- Precios: quién los ve
+//
+// El precio, el total y el estado de pago son solo para administración,
+// recepción y ventas. A los demás se les quita aquí, al salir: así la
+// consulta es una sola para todos y no hay forma de que el dato viaje al
+// navegador de quien no debe verlo.
+
+const verPrecio = (req: Request) => tienePermiso(req.usuario, 'ordenes.ver_precio');
+
+/** La orden como la pide el detalle y la hoja impresa. */
+function ordenSegunPermiso(orden: any, req: Request) {
+  if (verPrecio(req)) return orden;
+  const { pago, abonos, ...resto } = orden;
+  return {
+    ...resto,
+    lineas: (orden.lineas ?? []).map(({ precio, ...linea }: any) => linea),
+  };
+}
+
+/**
+ * La orden como la pide el formulario. Aquí el precio se deja vacío en vez
+ * de quitarlo: el formulario manda de vuelta todos sus campos, y si el
+ * precio no viniera, al guardar llegaría un valor inválido.
+ */
+function plantillaSegunPermiso(plantilla: any, req: Request) {
+  if (verPrecio(req)) return plantilla;
+  return {
+    ...plantilla,
+    lineas: (plantilla.lineas ?? []).map((linea: any) => ({ ...linea, precio: '' })),
+  };
+}
+
+/**
+ * La bitácora de cambios, sin lo que delata el precio: los abonos completos
+ * y, dentro de una edición, la línea del precio.
+ */
+function cambiosSegunPermiso(registros: any[], req: Request) {
+  if (verPrecio(req)) return registros;
+  return registros
+    .filter((r) => r.edicion !== 'pago')
+    .map((r) => ({ ...r, cambios: r.cambios.filter((c: string) => !c.includes('· Precio:')) }))
+    .filter((r) => r.cambios.length > 0);
+}
 
 // ---------------------------------------------------------------- Esquemas
 
@@ -196,7 +242,7 @@ rutasOrdenes.get('/ordenes', async (req, res, next) => {
 // Esta va antes de '/ordenes/:id' para que 'numero' no se tome como un id.
 rutasOrdenes.get('/ordenes/numero/:numero', async (req, res, next) => {
   try {
-    res.json(await ordenes.porNumero(Number(req.params.numero)));
+    res.json(ordenSegunPermiso(await ordenes.porNumero(Number(req.params.numero)), req));
   } catch (error) {
     next(error);
   }
@@ -204,7 +250,7 @@ rutasOrdenes.get('/ordenes/numero/:numero', async (req, res, next) => {
 
 rutasOrdenes.get('/ordenes/:id', async (req, res, next) => {
   try {
-    res.json(await ordenes.obtener(Number(req.params.id)));
+    res.json(ordenSegunPermiso(await ordenes.obtener(Number(req.params.id)), req));
   } catch (error) {
     next(error);
   }
@@ -216,7 +262,9 @@ rutasOrdenes.post('/ordenes', requierePermiso('ordenes.crear'), async (req, res,
     // Quien no anota pagos puede ingresar la orden igual, pero sin tocar
     // lo que el cliente dejo abonado.
     const u = req.usuario!;
-    if (!u.esAdmin && !u.permisos.includes('pagos.registrar')) delete datos.pago;
+    if (!tienePermiso(u, 'pagos.registrar')) delete datos.pago;
+    // Lo mismo con el precio: si no lo ve, no lo anota.
+    if (!verPrecio(req)) for (const linea of datos.lineas) linea.precio = null;
     res.status(201).json(await ordenes.crear(datos, u.id));
   } catch (error) {
     next(error);
@@ -225,15 +273,19 @@ rutasOrdenes.post('/ordenes', requierePermiso('ordenes.crear'), async (req, res,
 
 // ---------------------------------------------------------------- Pagos
 
-rutasOrdenes.get('/ordenes/:id/abonos', async (req, res, next) => {
-  try {
-    const id = Number(req.params.id);
-    const [resumen, abonos] = await Promise.all([pagos.resumen(id), pagos.listar(id)]);
-    res.json({ ...resumen, abonos });
-  } catch (error) {
-    next(error);
+rutasOrdenes.get(
+  '/ordenes/:id/abonos',
+  requierePermiso('ordenes.ver_precio', 'pagos.registrar'),
+  async (req, res, next) => {
+    try {
+      const id = Number(req.params.id);
+      const [resumen, abonos] = await Promise.all([pagos.resumen(id), pagos.listar(id)]);
+      res.json({ ...resumen, abonos });
+    } catch (error) {
+      next(error);
+    }
   }
-});
+);
 
 rutasOrdenes.post(
   '/ordenes/:id/abonos',
@@ -274,9 +326,12 @@ rutasOrdenes.delete(
 rutasOrdenes.get('/ordenes/:id/plantilla', async (req, res, next) => {
   try {
     res.json(
-      await ordenes.plantilla(
-        Number(req.params.id),
-        req.query.siguienteNumeracion === 'true'
+      plantillaSegunPermiso(
+        await ordenes.plantilla(
+          Number(req.params.id),
+          req.query.siguienteNumeracion === 'true'
+        ),
+        req
       )
     );
   } catch (error) {
@@ -287,7 +342,7 @@ rutasOrdenes.get('/ordenes/:id/plantilla', async (req, res, next) => {
 // Qué se le ha cambiado a la orden, con quién lo hizo y cuándo.
 rutasOrdenes.get('/ordenes/:id/cambios', async (req, res, next) => {
   try {
-    res.json(await ordenes.cambiosDeOrden(Number(req.params.id)));
+    res.json(cambiosSegunPermiso(await ordenes.cambiosDeOrden(Number(req.params.id)), req));
   } catch (error) {
     next(error);
   }
@@ -308,7 +363,19 @@ rutasOrdenes.put(
             .min(1, 'La orden debe conservar sus trabajos'),
         })
         .parse(req.body);
-      res.json(await ordenes.actualizarCompleta(Number(req.params.id), datos, req.usuario!.id));
+      // El último argumento es clave: quien no ve el precio tampoco lo
+      // manda, y su formulario no debe borrar el que ya está anotado.
+      res.json(
+        ordenSegunPermiso(
+          await ordenes.actualizarCompleta(
+            Number(req.params.id),
+            datos,
+            req.usuario!.id,
+            verPrecio(req)
+          ),
+          req
+        )
+      );
     } catch (error) {
       next(error);
     }

@@ -45,13 +45,26 @@ export function exigirPasswordDefinitiva(
   next();
 }
 
+/**
+ * ¿Tiene el usuario alguno de estos permisos? El administrador siempre sí.
+ * Es la misma pregunta que hace requierePermiso, pero para cuando la
+ * respuesta no bloquea la petición sino que decide qué se devuelve.
+ */
+export function tienePermiso(
+  usuario: Request['usuario'],
+  ...codigos: string[]
+): boolean {
+  if (!usuario) return false;
+  if (usuario.esAdmin) return true;
+  return codigos.some((c) => usuario.permisos.includes(c));
+}
+
 /** Exige al menos uno de los permisos indicados. El administrador pasa siempre. */
 export function requierePermiso(...codigos: string[]) {
   return (req: Request, _res: Response, next: NextFunction) => {
     const u = req.usuario;
     if (!u) return next(new ErrorHttp(401, 'Sesión no iniciada'));
-    if (u.esAdmin) return next();
-    if (codigos.some((c) => u.permisos.includes(c))) return next();
+    if (tienePermiso(u, ...codigos)) return next();
     next(new ErrorHttp(403, 'No tiene permiso para esta acción'));
   };
 }
