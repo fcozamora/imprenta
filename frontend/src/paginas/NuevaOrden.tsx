@@ -8,6 +8,7 @@ import { useSesion } from '../lib/sesion';
 import BuscadorCliente, { type Cliente } from '../componentes/BuscadorCliente';
 import LineaTrabajo, { lineaVacia, rolDeCopia, type DatosLinea } from '../componentes/LineaTrabajo';
 import { nuevoId } from '../lib/id';
+import { SelectorMetodo, type MetodoPago } from '../componentes/PagoOrden';
 
 /**
  * Un mismo formulario sirve para tres cosas:
@@ -44,6 +45,8 @@ export default function NuevaOrden() {
   const [lineas, setLineas] = useState<DatosLinea[]>([lineaVacia()]);
   const [pagoTipo, setPagoTipo] = useState<'' | 'ABONO' | 'CANCELADA'>('');
   const [abono, setAbono] = useState<number | ''>('');
+  const [metodoPago, setMetodoPago] = useState<MetodoPago | ''>('');
+  const [notaPago, setNotaPago] = useState('');
   const [cargada, setCargada] = useState(false);
   const [error, setError] = useState('');
   const [avisoMuestras, setAvisoMuestras] = useState('');
@@ -141,6 +144,8 @@ export default function NuevaOrden() {
     setLineas([lineaVacia()]);
     setPagoTipo('');
     setAbono('');
+    setMetodoPago('');
+    setNotaPago('');
   }
 
   /** Arma una línea con el nombre de campo que espera el servidor. */
@@ -263,14 +268,17 @@ export default function NuevaOrden() {
       }
 
       if (!vendedorId) throw new Error('Debe seleccionar un vendedor');
+      if (pagoTipo !== '' && metodoPago === '') {
+        throw new Error('Indique con qué pagó el cliente');
+      }
       const cuerpo = {
         ...cabecera(),
         clienteId: cliente.id,
         vendedorId: Number(vendedorId),
         ...(pagoTipo === 'CANCELADA'
-          ? { pago: { cancelada: true } }
+          ? { pago: { cancelada: true, metodo: metodoPago, nota: notaPago.trim() || null } }
           : pagoTipo === 'ABONO' && Number(abono) > 0
-            ? { pago: { abono: Number(abono) } }
+            ? { pago: { abono: Number(abono), metodo: metodoPago, nota: notaPago.trim() || null } }
             : {}),
         lineas: lineas.map(cuerpoDeLinea),
       };
@@ -658,6 +666,27 @@ export default function NuevaOrden() {
                   {totalOrden.toLocaleString('es-CR', { minimumFractionDigits: 2 })} del total.
                 </p>
               )}
+
+              {/* Con qué pagó: hace falta tanto para el abono como para la cancelada */}
+              {pagoTipo !== '' && (
+                <div className="mt-3 space-y-3 border-t border-slate-100 pt-3">
+                  <div>
+                    <label className="etiqueta">
+                      Método de pago <span className="text-red-500">*</span>
+                    </label>
+                    <SelectorMetodo valor={metodoPago} onCambio={setMetodoPago} />
+                  </div>
+                  <div className="sm:w-2/3">
+                    <label className="etiqueta">Nota del pago</label>
+                    <input
+                      className="campo"
+                      value={notaPago}
+                      placeholder="Ej. Recibo 1042, paga el hijo"
+                      onChange={(e) => setNotaPago(e.target.value)}
+                    />
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -693,7 +722,13 @@ export default function NuevaOrden() {
         )}
         <button
           type="submit"
-          disabled={guardar.isPending || !cliente || (!editando && !vendedorId)}
+          disabled={
+            guardar.isPending ||
+            !cliente ||
+            (!editando && !vendedorId) ||
+            // Si dejó algo pagado, falta decir con qué pagó.
+            (pagoTipo !== '' && metodoPago === '')
+          }
           className="boton-primario flex-1 py-3"
         >
           {guardar.isPending && <LoaderCircle className="h-4 w-4 animate-spin" />}

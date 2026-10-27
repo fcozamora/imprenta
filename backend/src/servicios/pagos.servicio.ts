@@ -3,6 +3,24 @@ import { ErrorHttp } from '../util/errores.js';
 
 export type EstadoPago = 'SIN_PRECIO' | 'PENDIENTE' | 'ABONADO' | 'CANCELADA';
 
+export const METODOS_PAGO = [
+  'EFECTIVO',
+  'SINPE',
+  'TRANSFERENCIA',
+  'TARJETA',
+  'CHEQUE',
+] as const;
+export type MetodoPago = (typeof METODOS_PAGO)[number];
+
+/** Como se lee el metodo en la bitacora: "Abono de ₡5 000,00 por Sinpe". */
+const COMO_SE_LEE: Record<MetodoPago, string> = {
+  EFECTIVO: 'en efectivo',
+  SINPE: 'por Sinpe',
+  TRANSFERENCIA: 'por transferencia',
+  TARJETA: 'con tarjeta',
+  CHEQUE: 'con cheque',
+};
+
 /**
  * El total de la orden es la suma de los precios de sus trabajos, y el
  * estado sale de comparar lo abonado contra ese total. No hay una casilla
@@ -47,7 +65,8 @@ export async function resumen(ordenId: number) {
 
 export async function listar(ordenId: number) {
   const [filas] = await pool.query(
-    `SELECT a.id, a.monto, a.nota, a.creado_en, u.nombre_completo AS registrado_por
+    `SELECT a.id, a.monto, a.metodo_pago, a.nota, a.creado_en,
+            u.nombre_completo AS registrado_por
        FROM orden_abonos a
        JOIN usuarios u ON u.id = a.registrado_por
       WHERE a.orden_id = ?
@@ -71,7 +90,7 @@ async function exigirOrden(ordenId: number) {
  */
 export async function registrar(
   ordenId: number,
-  datos: { monto?: number; saldar?: boolean; nota?: string | null },
+  datos: { monto?: number; saldar?: boolean; metodo: MetodoPago; nota?: string | null },
   usuarioId: number
 ) {
   await exigirOrden(ordenId);
@@ -90,8 +109,9 @@ export async function registrar(
   }
 
   await pool.query(
-    `INSERT INTO orden_abonos (orden_id, monto, nota, registrado_por) VALUES (?, ?, ?, ?)`,
-    [ordenId, monto, datos.nota?.trim() || null, usuarioId]
+    `INSERT INTO orden_abonos (orden_id, monto, metodo_pago, nota, registrado_por)
+     VALUES (?, ?, ?, ?, ?)`,
+    [ordenId, monto, datos.metodo, datos.nota?.trim() || null, usuarioId]
   );
 
   const despues = await resumen(ordenId);
@@ -104,7 +124,8 @@ export async function registrar(
       JSON.stringify({
         edicion: 'pago',
         cambios: [
-          `Abono de ${colones(monto)} · saldo ${colones(antes.saldo)} → ${colones(despues.saldo)}` +
+          `Abono de ${colones(monto)} ${COMO_SE_LEE[datos.metodo]}` +
+            ` · saldo ${colones(antes.saldo)} → ${colones(despues.saldo)}` +
             (despues.estado === 'CANCELADA' ? ' · queda cancelada' : ''),
         ],
       }),

@@ -2,6 +2,7 @@ import type { PoolConnection } from 'mysql2/promise';
 import { pool, enTransaccion } from '../db/pool.js';
 import { ErrorHttp } from '../util/errores.js';
 import * as pagos from './pagos.servicio.js';
+import type { MetodoPago } from './pagos.servicio.js';
 
 /** Categorías que trabaja el personal de imprenta. */
 const TIPOS_PRODUCCION = ['TALONARIOS', 'IMPRESION_DIGITAL', 'HP_LATEX', 'SOBRES'];
@@ -49,7 +50,12 @@ export interface NuevaOrden {
   fechaEntrega?: string | null;
   observaciones?: string | null;
   /** Lo que el cliente dejo pagado al ingresar la orden. */
-  pago?: { abono?: number | null; cancelada?: boolean; nota?: string | null };
+  pago?: {
+    abono?: number | null;
+    cancelada?: boolean;
+    metodo: MetodoPago;
+    nota?: string | null;
+  };
   lineas: LineaOrden[];
 }
 
@@ -219,8 +225,9 @@ export async function crear(datos: NuevaOrden, creadoPor: number) {
       const monto = datos.pago.cancelada ? total : Number(datos.pago.abono ?? 0);
       if (monto > 0) {
         await cx.query(
-          `INSERT INTO orden_abonos (orden_id, monto, nota, registrado_por) VALUES (?, ?, ?, ?)`,
-          [ordenId, monto, datos.pago.nota?.trim() || null, creadoPor]
+          `INSERT INTO orden_abonos (orden_id, monto, metodo_pago, nota, registrado_por)
+           VALUES (?, ?, ?, ?, ?)`,
+          [ordenId, monto, datos.pago.metodo, datos.pago.nota?.trim() || null, creadoPor]
         );
       }
     }

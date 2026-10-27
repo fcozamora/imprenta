@@ -14,9 +14,23 @@ export interface ResumenPago {
   precioIncompleto: boolean;
 }
 
+export type MetodoPago = 'EFECTIVO' | 'SINPE' | 'TRANSFERENCIA' | 'TARJETA' | 'CHEQUE';
+
+/** Con qué pagó el cliente. El orden es el de uso en el mostrador. */
+export const METODOS_PAGO: Array<[MetodoPago, string]> = [
+  ['EFECTIVO', 'Efectivo'],
+  ['SINPE', 'Sinpe'],
+  ['TRANSFERENCIA', 'Transferencia'],
+  ['TARJETA', 'Tarjeta'],
+  ['CHEQUE', 'Cheque'],
+];
+
+const NOMBRE_METODO = Object.fromEntries(METODOS_PAGO) as Record<MetodoPago, string>;
+
 export interface Abono {
   id: number;
   monto: string;
+  metodo_pago: MetodoPago | null;
   nota: string | null;
   creado_en: string;
   registrado_por: string;
@@ -24,6 +38,37 @@ export interface Abono {
 
 export const colones = (v: number) =>
   `₡${Number(v).toLocaleString('es-CR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+/**
+ * Los botones del método de pago. Se usa igual en la ventana de anotar un
+ * pago y en el bloque de "¿Deja algo pagado?" de la orden nueva.
+ */
+export function SelectorMetodo({
+  valor, onCambio,
+}: {
+  valor: MetodoPago | '';
+  onCambio: (m: MetodoPago) => void;
+}) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      {METODOS_PAGO.map(([codigo, texto]) => (
+        <button
+          key={codigo}
+          type="button"
+          onClick={() => onCambio(codigo)}
+          className={`rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150
+                      active:scale-95 ${
+                        valor === codigo
+                          ? 'bg-marca-600 text-white shadow-sm'
+                          : 'bg-white text-slate-700 ring-1 ring-slate-300 hover:bg-slate-50'
+                      }`}
+        >
+          {texto}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 const ROTULO: Record<ResumenPago['estado'], { texto: string; clase: string }> = {
   SIN_PRECIO: { texto: 'Sin precio', clase: 'bg-slate-200 text-slate-600' },
@@ -121,7 +166,18 @@ export default function PagoOrden({
               {abonos.map((a) => (
                 <li key={a.id} className="flex items-start justify-between gap-3 py-2">
                   <div className="min-w-0">
-                    <p className="text-sm font-medium text-slate-800">{colones(Number(a.monto))}</p>
+                    <p className="flex flex-wrap items-center gap-2 text-sm font-medium text-slate-800">
+                      {colones(Number(a.monto))}
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                          a.metodo_pago
+                            ? 'bg-slate-100 text-slate-600'
+                            : 'bg-amber-50 text-amber-700'
+                        }`}
+                      >
+                        {a.metodo_pago ? NOMBRE_METODO[a.metodo_pago] : 'Sin anotar'}
+                      </span>
+                    </p>
                     <p className="text-xs text-slate-500">
                       {a.registrado_por} · {fechaHora(a.creado_en)}
                     </p>
@@ -167,21 +223,28 @@ function ModalAbono({
   onCerrar: () => void;
   onGuardado: () => void;
 }) {
+  // Saldar es "canceló todo el saldo": el monto lo calcula el servidor, para
+  // que sea exactamente lo que falta aunque el precio haya cambiado recién.
+  const [saldar, setSaldar] = useState(false);
   const [monto, setMonto] = useState<number | ''>('');
+  const [metodo, setMetodo] = useState<MetodoPago | ''>('');
   const [nota, setNota] = useState('');
   const [error, setError] = useState('');
 
   const guardar = useMutation({
-    mutationFn: (saldar: boolean) =>
+    mutationFn: () =>
       api.post(`/ordenes/${ordenId}/abonos`, {
         ...(saldar ? { saldar: true } : { monto: Number(monto) }),
+        metodo,
         nota: nota.trim() || undefined,
       }),
     onSuccess: onGuardado,
     onError: (e) => setError(mensajeDeError(e)),
   });
 
-  const restante = saldo - Number(monto || 0);
+  const cuanto = saldar ? saldo : Number(monto || 0);
+  const restante = saldo - cuanto;
+  const listo = metodo !== '' && cuanto > 0;
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-slate-900/40 p-4">
@@ -202,16 +265,21 @@ function ModalAbono({
 
         <button
           type="button"
-          onClick={() => guardar.mutate(true)}
-          disabled={guardar.isPending}
-          className="boton-primario mb-3 w-full bg-emerald-600 hover:bg-emerald-700"
+          onClick={() => { setSaldar(!saldar); setMonto(''); }}
+          className={`mb-3 flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2.5
+                      text-sm font-semibold transition-all duration-150 active:scale-[0.98] ${
+                        saldar
+                          ? 'bg-emerald-600 text-white shadow-sm'
+                          : 'bg-white text-emerald-700 ring-1 ring-emerald-300 hover:bg-emerald-50'
+                      }`}
         >
           <CircleCheck className="h-4 w-4" />
           Canceló todo el saldo
         </button>
 
         <div className="mb-3 flex items-center gap-2 text-xs text-slate-400">
-          <span className="h-px flex-1 bg-slate-200" />o abona una parte
+          <span className="h-px flex-1 bg-slate-200" />
+          {saldar ? 'o anote solo una parte' : 'o abona una parte'}
           <span className="h-px flex-1 bg-slate-200" />
         </div>
 
@@ -226,14 +294,15 @@ function ModalAbono({
                 type="number"
                 min={0}
                 step="0.01"
-                className="campo pl-7"
-                value={monto}
+                className="campo pl-7 disabled:bg-slate-50 disabled:text-slate-500"
+                value={saldar ? saldo : monto}
+                disabled={saldar}
                 autoFocus
                 placeholder="0.00"
                 onChange={(e) => setMonto(e.target.value === '' ? '' : Number(e.target.value))}
               />
             </div>
-            {Number(monto) > 0 && (
+            {cuanto > 0 && (
               <p className="mt-1 text-xs text-slate-500">
                 {restante <= 0
                   ? 'Cubre el saldo: la orden queda cancelada.'
@@ -243,11 +312,18 @@ function ModalAbono({
           </div>
 
           <div>
+            <label className="etiqueta">
+              Método de pago <span className="text-red-500">*</span>
+            </label>
+            <SelectorMetodo valor={metodo} onCambio={setMetodo} />
+          </div>
+
+          <div>
             <label className="etiqueta">Nota</label>
             <input
               className="campo"
               value={nota}
-              placeholder="Ej. Abono en efectivo"
+              placeholder="Ej. Recibo 1042, paga el hijo"
               onChange={(e) => setNota(e.target.value)}
             />
           </div>
@@ -260,15 +336,20 @@ function ModalAbono({
 
           <div className="flex gap-2 pt-1">
             <button
-              onClick={() => guardar.mutate(false)}
-              disabled={guardar.isPending || !(Number(monto) > 0)}
-              className="boton-primario flex-1"
+              onClick={() => guardar.mutate()}
+              disabled={guardar.isPending || !listo}
+              className={`boton-primario flex-1 ${
+                saldar ? 'bg-emerald-600 hover:bg-emerald-700' : ''
+              }`}
             >
               {guardar.isPending && <LoaderCircle className="h-4 w-4 animate-spin" />}
-              Anotar abono
+              {saldar ? `Cancelar la orden con ${colones(saldo)}` : 'Anotar abono'}
             </button>
-            <button onClick={onCerrar} className="boton-secundario">Cancelar</button>
+            <button onClick={onCerrar} className="boton-secundario">Cerrar</button>
           </div>
+          {!listo && cuanto > 0 && (
+            <p className="text-xs text-slate-500">Falta escoger con qué pagó el cliente.</p>
+          )}
         </div>
       </div>
     </div>

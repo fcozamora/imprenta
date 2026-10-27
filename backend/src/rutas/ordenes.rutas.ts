@@ -128,6 +128,7 @@ const esquemaOrden = z.object({
     .object({
       abono: z.number().nonnegative().optional().nullable(),
       cancelada: z.boolean().optional(),
+      metodo: z.enum(pagos.METODOS_PAGO, 'Indique con qué pagó el cliente'),
       nota: z.string().trim().max(255).optional().nullable(),
     })
     .optional(),
@@ -296,6 +297,7 @@ rutasOrdenes.post(
         .object({
           monto: z.number().positive().optional(),
           saldar: z.boolean().optional(),
+          metodo: z.enum(pagos.METODOS_PAGO, 'Indique con qué pagó el cliente'),
           nota: z.string().trim().max(255).optional().nullable(),
         })
         .refine((d) => d.saldar === true || (d.monto ?? 0) > 0, {
