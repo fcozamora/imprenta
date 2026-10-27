@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import {
   Printer, LayoutDashboard, FilePlus2, Users, Stamp, Package,
-  ClipboardList, BarChart3, Settings, LogOut, Menu, X, Search, Bell, Scissors,Shirt, FileStack, Truck, PackageOpen, Layers, Palmtree } from 'lucide-react';
+  ClipboardList, BarChart3, Settings, LogOut, Menu, X, Search, Bell, Scissors,Shirt, FileStack, Truck, PackageOpen, Layers, Palmtree, Receipt } from 'lucide-react';
 import { useSesion } from '../lib/sesion';
 import Campana from './Campana';
 
@@ -14,6 +14,7 @@ interface Pendientes {
   materiales: number;
   camisetas: number;
   vacaciones: number;
+  pagosFijos: number;
 }
 
 interface ItemMenu {
@@ -38,6 +39,7 @@ const MENU: ItemMenu[] = [
   { a: '/notificaciones', texto: 'Notificaciones', icono: Bell },
   { a: '/bitacora', texto: 'Bitácora', icono: ClipboardList, permisos: ['bitacora.ver'] },
   { a: '/reportes', texto: 'Reportes', icono: BarChart3, permisos: ['reportes.generar'] },
+  { a: '/control-pagos', texto: 'Control de pagos', icono: Receipt, permisos: ['pagos_fijos.gestionar'], pendientes: 'pagosFijos' },
   { a: '/papeles', texto: 'Papeles', icono: FileStack, permisos: ['catalogos.gestionar', 'papeles.gestionar', 'papeles.movimientos'] },
   { a: '/materiales-impresion', texto: 'Materiales de impresión', icono: Layers, permisos: ['materiales.catalogo'] },
   { a: '/admin', texto: 'Administración', icono: Settings, permisos: ['usuarios.gestionar'] },

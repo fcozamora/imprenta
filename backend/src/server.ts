@@ -16,6 +16,7 @@ import { rutasReportes } from './rutas/reportes.rutas.js';
 import { rutasExtras } from './rutas/extras.rutas.js';
 import { rutasPedidosExternos } from './rutas/pedidosExternos.rutas.js';
 import { rutasVacaciones } from './rutas/vacaciones.rutas.js';
+import { rutasPagosFijos } from './rutas/pagosFijos.rutas.js';
 
 const app = express();
 
@@ -62,6 +63,7 @@ app.use('/api', rutasReportes);
 app.use('/api', rutasExtras);
 app.use('/api/pedidos-externos', rutasPedidosExternos);
 app.use('/api', rutasVacaciones);
+app.use('/api/control-pagos', rutasPagosFijos);
 
 // En produccion el backend tambien sirve las pantallas compiladas.
 const carpetaWeb = path.resolve(process.cwd(), 'public');

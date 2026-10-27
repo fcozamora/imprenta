@@ -1,4 +1,5 @@
 import { pool } from '../db/pool.js';
+import * as pagosFijos from './pagosFijos.servicio.js';
 
 /**
  * Lo que está esperando que alguien lo atienda, para marcarlo en el menú.
@@ -15,7 +16,7 @@ export async function contar(usuario: { esAdmin: boolean; permisos: string[] }) 
     return Number((filas as any[])[0]?.n ?? 0);
   };
 
-  const [materiales, camisetas, vacaciones] = await Promise.all([
+  const [materiales, camisetas, vacaciones, pagos] = await Promise.all([
     puede('materiales.atender')
       ? uno(`SELECT COUNT(*) AS n FROM solicitudes_material WHERE estado = 'PENDIENTE'`)
       : 0,
@@ -25,7 +26,14 @@ export async function contar(usuario: { esAdmin: boolean; permisos: string[] }) 
     puede('vacaciones.gestionar')
       ? uno(`SELECT COUNT(*) AS n FROM vacaciones_solicitudes WHERE estado = 'PENDIENTE'`)
       : 0,
+    // Pagos fijos cuyo vencimiento ya pasó y siguen sin comprobante.
+    puede('pagos_fijos.gestionar') ? pagosFijos.pendientes() : null,
   ]);
 
-  return { materiales, camisetas, vacaciones };
+  return {
+    materiales,
+    camisetas,
+    vacaciones,
+    pagosFijos: pagos ? Object.values(pagos).reduce((suma, n) => suma + n, 0) : 0,
+  };
 }
