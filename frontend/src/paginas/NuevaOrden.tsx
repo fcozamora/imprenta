@@ -37,8 +37,11 @@ export default function NuevaOrden() {
   const [vendedorId, setVendedorId] = useState<number | ''>('');
   const [fechaIngreso, setFechaIngreso] = useState('');
   const [observaciones, setObservaciones] = useState('');
-  const [medioMuestra, setMedioMuestra] = useState<'WHATSAPP' | 'EMAIL' | 'VENDEDOR' | ''>('');
+  const [medioMuestra, setMedioMuestra] =
+    useState<'WHATSAPP' | 'EMAIL' | 'VENDEDOR' | 'OTRO' | ''>('');
   const [emailMuestra, setEmailMuestra] = useState('');
+  const [contactoNombre, setContactoNombre] = useState('');
+  const [contactoDato, setContactoDato] = useState('');
   const [urgente, setUrgente] = useState(false);
   const [motivoUrgencia, setMotivoUrgencia] = useState('');
   const [fechaEntrega, setFechaEntrega] = useState('');
@@ -83,6 +86,8 @@ export default function NuevaOrden() {
     setObservaciones(plantilla.observaciones ?? '');
     setMedioMuestra(plantilla.medioMuestra ?? '');
     setEmailMuestra(plantilla.emailMuestra ?? '');
+    setContactoNombre(plantilla.contactoNombre ?? '');
+    setContactoDato(plantilla.contactoDato ?? '');
     setUrgente(plantilla.urgente);
     setMotivoUrgencia(plantilla.motivoUrgencia ?? '');
     setFechaEntrega(editando ? (plantilla.fechaEntrega?.slice(0, 10) ?? '') : '');
@@ -142,6 +147,8 @@ export default function NuevaOrden() {
     setMotivoUrgencia('');
     setFechaEntrega('');
     setLineas([lineaVacia()]);
+    setContactoNombre('');
+    setContactoDato('');
     setPagoTipo('');
     setAbono('');
     setMetodoPago('');
@@ -219,6 +226,8 @@ export default function NuevaOrden() {
     return {
       medioMuestra: medioMuestra || null,
       emailMuestra: medioMuestra === 'EMAIL' ? emailMuestra.trim() || null : null,
+      contactoNombre: contactoNombre.trim() || null,
+      contactoDato: medioMuestra === 'OTRO' ? contactoDato.trim() || null : null,
       urgente,
       motivoUrgencia: urgente ? motivoUrgencia.trim() || null : null,
       fechaEntrega: urgente && fechaEntrega ? fechaEntrega : null,
@@ -448,6 +457,18 @@ export default function NuevaOrden() {
             )}
           </div>
           <div>
+            <label className="etiqueta">Persona de contacto</label>
+            <input
+              className="campo"
+              value={contactoNombre}
+              placeholder="Con quién se trata esta orden"
+              onChange={(e) => setContactoNombre(e.target.value)}
+            />
+            <p className="mt-1 text-xs text-slate-500">
+              Opcional. Si la orden la trae alguien distinto del cliente registrado.
+            </p>
+          </div>
+          <div className="sm:col-span-2">
             <label className="etiqueta">Observaciones de la orden</label>
             <input
               className="campo"
@@ -480,6 +501,7 @@ export default function NuevaOrden() {
               ['WHATSAPP', 'WhatsApp'],
               ['EMAIL', 'Correo electrónico'],
               ['VENDEDOR', 'Muestra a vendedor(a)'],
+              ['OTRO', 'Otro'],
             ] as const).map(([valor, texto]) => (
               <button
                 key={valor}
@@ -505,6 +527,20 @@ export default function NuevaOrden() {
             <p className="mt-2 text-xs text-slate-500">
               La muestra se le entrega al vendedor para que se la haga llegar al cliente.
             </p>
+          )}
+
+          {medioMuestra === 'OTRO' && (
+            <div className="mt-2">
+              <input
+                className="campo"
+                value={contactoDato}
+                placeholder="Teléfono o correo de esa persona"
+                onChange={(e) => setContactoDato(e.target.value)}
+              />
+              <p className="mt-1 text-xs text-slate-500">
+                Escriba el número o el correo de quien va a recibir la muestra.
+              </p>
+            </div>
           )}
 
           {medioMuestra === 'EMAIL' && (

@@ -77,6 +77,9 @@ export default function ImprimirOrden() {
               <Dato rotulo="Teléfono" valor={orden.telefono} />
               <Dato rotulo="Nombre comercial" valor={orden.nombre_comercial} />
               <Dato rotulo="Email facturación" valor={orden.email_facturacion} ancho />
+              {orden.contacto_nombre && (
+                <Dato rotulo="Contacto" valor={orden.contacto_nombre} />
+              )}
               <Dato rotulo="Vendedor" valor={orden.vendedor} />
               <Dato rotulo="Recibido por" valor={orden.registrada_por} />
             </div>
@@ -102,6 +105,11 @@ export default function ImprimirOrden() {
               <span className={`casilla ${orden.medio_muestra === 'EMAIL' ? 'marcada' : ''}`} />
               Correo{' '}
               <span className="linea-correo">{orden.email_muestra ?? ''}</span>
+            </span>
+            <span className="opcion">
+              <span className={`casilla ${orden.medio_muestra === 'OTRO' ? 'marcada' : ''}`} />
+              Otro{' '}
+              <span className="linea-correo">{orden.contacto_dato ?? ''}</span>
             </span>
           </div>
         </section>

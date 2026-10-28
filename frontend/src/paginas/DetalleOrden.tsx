@@ -122,6 +122,11 @@ export default function DetalleOrden() {
                 )}
               </dd>
               {orden.email_facturacion && <dd>{orden.email_facturacion}</dd>}
+              {orden.contacto_nombre && (
+                <dd className="text-slate-700">
+                  <span className="text-slate-500">Contacto:</span> {orden.contacto_nombre}
+                </dd>
+              )}
             </dl>
 
             {orden.medio_muestra && (
@@ -130,6 +135,10 @@ export default function DetalleOrden() {
                 {orden.medio_muestra === 'EMAIL' &&
                   `Muestra por correo${orden.email_muestra ? `: ${orden.email_muestra}` : ''}`}
                 {orden.medio_muestra === 'VENDEDOR' && `Muestra a ${orden.vendedor}`}
+                {orden.medio_muestra === 'OTRO' &&
+                  `Muestra a${orden.contacto_nombre ? ` ${orden.contacto_nombre}` : 'l contacto'}${
+                    orden.contacto_dato ? `: ${orden.contacto_dato}` : ''
+                  }`}
               </p>
             )}
           </div>

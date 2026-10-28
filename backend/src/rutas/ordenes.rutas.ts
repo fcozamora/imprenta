@@ -113,7 +113,9 @@ const esquemaOrden = z.object({
   clienteId: z.number().int().positive('Debe seleccionar un cliente'),
   vendedorId: z.number().int().positive('Debe seleccionar un vendedor'),
   fechaIngreso: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().nullable(),
-  medioMuestra: z.enum(['WHATSAPP', 'EMAIL', 'VENDEDOR']).optional().nullable(),
+  medioMuestra: z.enum(['WHATSAPP', 'EMAIL', 'VENDEDOR', 'OTRO']).optional().nullable(),
+  contactoNombre: z.string().trim().max(120).optional().nullable(),
+  contactoDato: z.string().trim().max(160).optional().nullable(),
   emailMuestra: z
     .string()
     .email('El correo de la muestra no es válido')
@@ -393,8 +395,10 @@ rutasOrdenes.patch('/ordenes/:id', requierePermiso('ordenes.editar'), async (req
         urgente: z.boolean().optional(),
         motivoUrgencia: z.string().trim().max(200).optional().nullable(),
         fechaEntrega: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().nullable(),
-        medioMuestra: z.enum(['WHATSAPP', 'EMAIL', 'VENDEDOR']).optional().nullable(),
+        medioMuestra: z.enum(['WHATSAPP', 'EMAIL', 'VENDEDOR', 'OTRO']).optional().nullable(),
         emailMuestra: z.string().email('Correo inválido').optional().nullable().or(z.literal('')),
+        contactoNombre: z.string().trim().max(120).optional().nullable(),
+        contactoDato: z.string().trim().max(160).optional().nullable(),
       })
       .parse(req.body);
     res.json(await ordenes.actualizar(Number(req.params.id), datos, req.usuario!.id));

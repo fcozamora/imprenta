@@ -43,8 +43,12 @@ export interface NuevaOrden {
   clienteId: number;
   vendedorId: number;
   fechaIngreso?: string | null;
-  medioMuestra?: 'WHATSAPP' | 'EMAIL' | 'VENDEDOR' | null;
+  medioMuestra?: 'WHATSAPP' | 'EMAIL' | 'VENDEDOR' | 'OTRO' | null;
   emailMuestra?: string | null;
+  /** La persona con quien se trata esta orden, si no es el cliente mismo. */
+  contactoNombre?: string | null;
+  /** Telefono o correo escrito a mano cuando el medio es OTRO. */
+  contactoDato?: string | null;
   urgente?: boolean;
   motivoUrgencia?: string | null;
   fechaEntrega?: string | null;
@@ -159,13 +163,16 @@ export async function crear(datos: NuevaOrden, creadoPor: number) {
     // El número de orden y la fecha de ingreso los pone el trigger si van en NULL.
         const [resultado] = await cx.query(
       `INSERT INTO ordenes (numero_orden, cliente_id, vendedor_id, fecha_ingreso,
+                            contacto_nombre, contacto_dato,
                             medio_muestra, email_muestra, urgente, motivo_urgencia,
                             observaciones, creado_por)
-       VALUES (0, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         datos.clienteId,
         datos.vendedorId,
         datos.fechaIngreso ?? null,
+        datos.contactoNombre?.trim() || null,
+        datos.contactoDato?.trim() || null,
         datos.medioMuestra ?? null,
         datos.emailMuestra?.trim() || null,
         datos.urgente ? 1 : 0,
@@ -307,7 +314,7 @@ export async function plantilla(id: number, siguienteNumeracion = false) {
   const [ordenes] = await pool.query(
     `SELECT o.id, o.numero_orden, o.cliente_id, o.vendedor_id, o.fecha_ingreso,
             o.fecha_entrega, o.observaciones, o.medio_muestra, o.email_muestra,
-            o.urgente, o.motivo_urgencia,
+            o.contacto_nombre, o.contacto_dato, o.urgente, o.motivo_urgencia,
             c.cedula AS cliente_cedula, c.nombre AS cliente_nombre,
             c.nombre_comercial, c.telefono, c.email_facturacion,
             v.nombre_completo AS vendedor
@@ -487,6 +494,8 @@ export async function plantilla(id: number, siguienteNumeracion = false) {
     fechaEntrega: orden.fecha_entrega,
     medioMuestra: orden.medio_muestra ?? '',
     emailMuestra: orden.email_muestra ?? '',
+    contactoNombre: orden.contacto_nombre ?? '',
+    contactoDato: orden.contacto_dato ?? '',
     urgente: orden.urgente === 1,
     motivoUrgencia: orden.motivo_urgencia ?? '',
     observaciones: orden.observaciones ?? '',
@@ -500,7 +509,8 @@ export async function obtener(id: number) {
   const [ordenes] = await pool.query(
     `SELECT o.id, o.numero_orden, o.fecha_ingreso, o.fecha_entrega, o.estado,
             o.observaciones, o.creado_en, o.finalizada_en,
-            o.medio_muestra, o.email_muestra, o.urgente, o.motivo_urgencia,
+            o.medio_muestra, o.email_muestra, o.contacto_nombre, o.contacto_dato,
+            o.urgente, o.motivo_urgencia,
             c.id AS cliente_id, c.cedula AS cliente_cedula, c.nombre AS cliente,
             c.nombre_comercial, c.telefono, c.telefono_wa, c.email_facturacion,
             o.vendedor_id, v.nombre_completo AS vendedor,
@@ -654,8 +664,12 @@ export interface CambiosOrden {
   urgente?: boolean;
   motivoUrgencia?: string | null;
   fechaEntrega?: string | null;
-  medioMuestra?: 'WHATSAPP' | 'EMAIL' | 'VENDEDOR' | null;
+  medioMuestra?: 'WHATSAPP' | 'EMAIL' | 'VENDEDOR' | 'OTRO' | null;
   emailMuestra?: string | null;
+  /** La persona con quien se trata esta orden, si no es el cliente mismo. */
+  contactoNombre?: string | null;
+  /** Telefono o correo escrito a mano cuando el medio es OTRO. */
+  contactoDato?: string | null;
 }
 
 export async function actualizar(id: number, cambios: CambiosOrden, usuarioId: number) {
@@ -675,7 +689,9 @@ export async function actualizar(id: number, cambios: CambiosOrden, usuarioId: n
             motivo_urgencia = COALESCE(?, motivo_urgencia),
             fecha_entrega   = COALESCE(?, fecha_entrega),
             medio_muestra   = COALESCE(?, medio_muestra),
-            email_muestra   = COALESCE(?, email_muestra)
+            email_muestra   = COALESCE(?, email_muestra),
+            contacto_nombre = COALESCE(?, contacto_nombre),
+            contacto_dato   = COALESCE(?, contacto_dato)
       WHERE id = ?`,
     [
       cambios.vendedorId ?? null,
@@ -685,6 +701,8 @@ export async function actualizar(id: number, cambios: CambiosOrden, usuarioId: n
       cambios.fechaEntrega ?? null,
       cambios.medioMuestra ?? null,
       cambios.emailMuestra ?? null,
+      cambios.contactoNombre ?? null,
+      cambios.contactoDato ?? null,
       id,
     ]
   );
@@ -717,8 +735,12 @@ export async function actualizar(id: number, cambios: CambiosOrden, usuarioId: n
 
 export interface OrdenCompleta {
   fechaIngreso?: string | null;
-  medioMuestra?: 'WHATSAPP' | 'EMAIL' | 'VENDEDOR' | null;
+  medioMuestra?: 'WHATSAPP' | 'EMAIL' | 'VENDEDOR' | 'OTRO' | null;
   emailMuestra?: string | null;
+  /** La persona con quien se trata esta orden, si no es el cliente mismo. */
+  contactoNombre?: string | null;
+  /** Telefono o correo escrito a mano cuando el medio es OTRO. */
+  contactoDato?: string | null;
   urgente?: boolean;
   motivoUrgencia?: string | null;
   fechaEntrega?: string | null;
@@ -800,7 +822,9 @@ export async function actualizarCompleta(
               motivo_urgencia = ?,
               fecha_entrega   = COALESCE(?, fecha_entrega),
               medio_muestra   = ?,
-              email_muestra   = ?
+              email_muestra   = ?,
+              contacto_nombre = ?,
+              contacto_dato   = ?
         WHERE id = ?`,
       [
         datos.fechaIngreso ?? null,
@@ -810,6 +834,9 @@ export async function actualizarCompleta(
         datos.urgente ? (datos.fechaEntrega ?? null) : null,
         datos.medioMuestra ?? null,
         datos.emailMuestra?.trim() || null,
+        datos.contactoNombre?.trim() || null,
+        // El dato escrito a mano solo tiene sentido con el medio OTRO.
+        datos.medioMuestra === 'OTRO' ? datos.contactoDato?.trim() || null : null,
         id,
       ]
     );
@@ -995,6 +1022,7 @@ function describirCambios(antes: any, datos: OrdenCompleta, n: Nombres): string[
     WHATSAPP: 'WhatsApp',
     EMAIL: 'Correo electrónico',
     VENDEDOR: 'Muestra a vendedor(a)',
+    OTRO: 'Otro contacto',
   };
 
   // La fecha de ingreso solo se pisa si viene: si no, la consulta la deja
@@ -1016,6 +1044,8 @@ function describirCambios(antes: any, datos: OrdenCompleta, n: Nombres): string[
     (v) => MEDIOS[textoDe(v)] ?? textoDe(v)
   );
   comparar('Correo de la muestra', antes.emailMuestra, datos.emailMuestra);
+  comparar('Persona de contacto', antes.contactoNombre, datos.contactoNombre);
+  comparar('Contacto de la muestra', antes.contactoDato, datos.contactoDato);
   comparar('Observaciones de la orden', antes.observaciones, datos.observaciones);
 
   const porId = (mapa: Map<number, string>) => (v: any) =>
