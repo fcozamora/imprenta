@@ -19,6 +19,7 @@ interface PagoFijo {
   frecuencia: Frecuencia;
   dia_1: number;
   dia_2: number | null;
+  avisar_dias: number;
   notas: string | null;
   activo: boolean;
   desde: string;
@@ -28,6 +29,7 @@ interface PagoFijo {
   estado: Estado;
   atrasados: number;
   diasDeAtraso: number;
+  faltan: number;
 }
 
 interface Comprobante {
@@ -80,7 +82,11 @@ export default function ControlPagos() {
       )).data,
   });
 
-  const refrescar = () => cliente.invalidateQueries({ queryKey: ['control-pagos'] });
+  const refrescar = () => {
+    cliente.invalidateQueries({ queryKey: ['control-pagos'] });
+    // Para que el círculo del menú no quede con la cuenta vieja.
+    cliente.invalidateQueries({ queryKey: ['pendientes'] });
+  };
 
   const quitar = useMutation({
     mutationFn: (id: number) => api.delete(`/control-pagos/${id}`),
@@ -95,8 +101,9 @@ export default function ControlPagos() {
   });
 
   const pagos = data?.pagos ?? [];
-  // Un pago inactivo ya no se cobra, así que no cuenta como atrasado.
+  // Un pago inactivo ya no se cobra, así que no cuenta.
   const atrasados = pagos.filter((p) => p.activo && p.estado === 'ATRASADO').length;
+  const porPagar = pagos.filter((p) => p.activo && p.estado === 'PENDIENTE').length;
 
   if (!esDeAdministracion) {
     return (
@@ -163,6 +170,16 @@ export default function ControlPagos() {
         </p>
       )}
 
+      {porPagar > 0 && (
+        <p className="flex items-center gap-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800
+                      ring-1 ring-amber-200">
+          <Clock className="h-4 w-4 shrink-0" />
+          {porPagar === 1
+            ? 'Hay un pago cuya fecha ya viene encima.'
+            : `Hay ${porPagar} pagos cuya fecha ya viene encima.`}
+        </p>
+      )}
+
       {isLoading ? (
         <div className="grid place-items-center py-16">
           <LoaderCircle className="h-6 w-6 animate-spin text-marca-600" />
@@ -215,6 +232,15 @@ export default function ControlPagos() {
                             {' '}· {p.diasDeAtraso === 1
                               ? 'un día de atraso'
                               : `${p.diasDeAtraso} días de atraso`}
+                          </span>
+                        )}
+                        {p.estado === 'PENDIENTE' && (
+                          <span className="text-amber-700">
+                            {' '}· {p.faltan === 0
+                              ? 'es hoy'
+                              : p.faltan === 1
+                                ? 'es mañana'
+                                : `faltan ${p.faltan} días`}
                           </span>
                         )}
                         {p.atrasados > 1 && (
@@ -329,6 +355,7 @@ function ModalPago({
   const [frecuencia, setFrecuencia] = useState<Frecuencia>(pago?.frecuencia ?? 'MENSUAL');
   const [dia1, setDia1] = useState<number | ''>(pago?.dia_1 ?? '');
   const [dia2, setDia2] = useState<number | ''>(pago?.dia_2 ?? '');
+  const [avisarDias, setAvisarDias] = useState<number | ''>(pago?.avisar_dias ?? 5);
   const [notas, setNotas] = useState(pago?.notas ?? '');
   const [error, setError] = useState('');
 
@@ -340,6 +367,7 @@ function ModalPago({
         frecuencia,
         dia1: Number(dia1),
         dia2: frecuencia === 'QUINCENAL' ? Number(dia2) : null,
+        avisarDias: avisarDias === '' ? 5 : Number(avisarDias),
         notas: notas.trim() || null,
         ...(pago ? { desde: pago.desde } : {}),
       };
@@ -433,6 +461,24 @@ function ModalPago({
         <p className="text-xs text-slate-500">
           Si el mes no llega a ese día —un 31 en febrero— el vencimiento se corre al último día.
         </p>
+
+        <div>
+          <label className="etiqueta">Avisar con cuántos días de anticipación</label>
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              min={0}
+              max={30}
+              className="campo w-24"
+              value={avisarDias}
+              onChange={(e) => setAvisarDias(e.target.value === '' ? '' : Number(e.target.value))}
+            />
+            <span className="text-sm text-slate-500">días antes del vencimiento</span>
+          </div>
+          <p className="mt-1 text-xs text-slate-500">
+            El pago se enciende en amarillo y se marca en el menú con esta anticipación.
+          </p>
+        </div>
 
         <div>
           <label className="etiqueta">Notas</label>

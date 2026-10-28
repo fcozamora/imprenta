@@ -24,6 +24,13 @@ const esquemaPago = z.object({
   frecuencia: z.enum(pagosFijos.FRECUENCIAS, 'Indique cada cuánto se paga'),
   dia1: z.number().int().min(1, 'El día va del 1 al 31').max(31, 'El día va del 1 al 31'),
   dia2: z.number().int().min(1).max(31).optional().nullable(),
+  avisarDias: z
+    .number()
+    .int()
+    .min(0, 'El aviso va de 0 a 30 días')
+    .max(30, 'El aviso va de 0 a 30 días')
+    .optional()
+    .nullable(),
   notas: z.string().trim().max(255).optional().nullable(),
   desde: fecha.optional().nullable(),
 });

@@ -13,9 +13,13 @@ export interface DatosPagoFijo {
   frecuencia: Frecuencia;
   dia1: number;
   dia2?: number | null;
+  avisarDias?: number | null;
   notas?: string | null;
   desde?: string | null;
 }
+
+/** Con cuántos días de anticipación se enciende el aviso, si no dicen otra cosa. */
+export const AVISO_POR_OMISION = 5;
 
 // ------------------------------------------------------------- Fechas
 //
@@ -92,7 +96,7 @@ function proximoVencimiento(
 export async function listar(empresa: Empresa, incluirInactivos = false) {
   const [filas] = await pool.query(
     `SELECT pf.id, pf.empresa, pf.descripcion, pf.frecuencia, pf.dia_1, pf.dia_2,
-            pf.notas, pf.activo, pf.desde, u.nombre_completo AS creado_por,
+            pf.avisar_dias, pf.notas, pf.activo, pf.desde, u.nombre_completo AS creado_por,
             (SELECT COUNT(*) FROM pagos_fijos_registros r WHERE r.pago_fijo_id = pf.id)
               AS pagos_anotados
        FROM pagos_fijos pf
@@ -126,15 +130,28 @@ export async function listar(empresa: Empresa, incluirInactivos = false) {
     const sinPagar = vencimientos(p, desde, hoy).filter((f) => !yaPagados.has(f));
 
     const periodo = sinPagar.length ? sinPagar[0] : proximoVencimiento(p, hoy);
-    const estado = !sinPagar.length ? 'AL_DIA' : periodo < hoy ? 'ATRASADO' : 'PENDIENTE';
+    const faltan = Math.round((Date.parse(periodo) - Date.parse(hoy)) / 86_400_000);
+    // El aviso se enciende varios dias antes del vencimiento, no el mismo
+    // dia: asi da tiempo de hacer el tramite.
+    const anticipacion = Number(p.avisar_dias ?? AVISO_POR_OMISION);
+
+    const estado =
+      periodo < hoy && sinPagar.length
+        ? 'ATRASADO'
+        : faltan <= anticipacion
+          ? 'PENDIENTE'
+          : 'AL_DIA';
 
     return {
       ...p,
       desde,
       activo: p.activo === 1,
+      avisar_dias: anticipacion,
       // El vencimiento que toca cubrir y cuantos quedan sin comprobante.
       periodo,
       estado,
+      // Cuantos dias faltan para ese vencimiento (negativo si ya paso).
+      faltan,
       atrasados: sinPagar.length > 1 ? sinPagar.length : sinPagar.length === 1 && estado === 'ATRASADO' ? 1 : 0,
       diasDeAtraso:
         estado === 'ATRASADO'
@@ -174,14 +191,15 @@ export async function crear(datos: DatosPagoFijo, usuarioId: number) {
   revisarDatos(datos);
   const [resultado] = await pool.query(
     `INSERT INTO pagos_fijos
-       (empresa, descripcion, frecuencia, dia_1, dia_2, notas, desde, creado_por)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+       (empresa, descripcion, frecuencia, dia_1, dia_2, avisar_dias, notas, desde, creado_por)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       datos.empresa,
       datos.descripcion.trim(),
       datos.frecuencia,
       datos.dia1,
       datos.frecuencia === 'QUINCENAL' ? datos.dia2 : null,
+      datos.avisarDias ?? AVISO_POR_OMISION,
       datos.notas?.trim() || null,
       datos.desde || hoyEnTexto(),
       usuarioId,
@@ -194,13 +212,15 @@ export async function actualizar(id: number, datos: DatosPagoFijo) {
   revisarDatos(datos);
   const [resultado] = await pool.query(
     `UPDATE pagos_fijos
-        SET descripcion = ?, frecuencia = ?, dia_1 = ?, dia_2 = ?, notas = ?, desde = ?
+        SET descripcion = ?, frecuencia = ?, dia_1 = ?, dia_2 = ?, avisar_dias = ?,
+            notas = ?, desde = ?
       WHERE id = ?`,
     [
       datos.descripcion.trim(),
       datos.frecuencia,
       datos.dia1,
       datos.frecuencia === 'QUINCENAL' ? datos.dia2 : null,
+      datos.avisarDias ?? AVISO_POR_OMISION,
       datos.notas?.trim() || null,
       datos.desde || hoyEnTexto(),
       id,
@@ -279,12 +299,17 @@ export async function borrarPago(registroId: number) {
   return { ok: true };
 }
 
-/** Cuántos pagos están atrasados, por empresa: es lo que pinta el menú. */
+/**
+ * Cuántos pagos piden atención, por empresa: es lo que pinta el menú. Son
+ * los atrasados y los que ya entraron en su ventana de aviso.
+ */
 export async function pendientes() {
   const resumen: Record<string, number> = {};
   for (const empresa of EMPRESAS) {
     const pagos = await listar(empresa);
-    resumen[empresa] = pagos.filter((p) => p.estado === 'ATRASADO').length;
+    resumen[empresa] = pagos.filter(
+      (p) => p.estado === 'ATRASADO' || p.estado === 'PENDIENTE'
+    ).length;
   }
   return resumen;
 }
