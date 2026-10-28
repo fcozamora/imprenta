@@ -176,6 +176,57 @@ export async function historial(pagoFijoId: number, limite = 24) {
   return filas;
 }
 
+/**
+ * Todo lo que se ha pagado en una empresa, del más reciente al más viejo.
+ * Se puede acotar a un mes ('2026-10') y buscar por número de comprobante
+ * o por el nombre del pago.
+ */
+export async function historialDeEmpresa(
+  empresa: Empresa,
+  filtros: { mes?: string | null; busqueda?: string | null; limite?: number } = {}
+) {
+  const condiciones = ['pf.empresa = ?'];
+  const valores: any[] = [empresa];
+
+  if (filtros.mes) {
+    condiciones.push(`DATE_FORMAT(r.pagado_en, '%Y-%m') = ?`);
+    valores.push(filtros.mes);
+  }
+  if (filtros.busqueda?.trim()) {
+    condiciones.push('(r.comprobante LIKE ? OR pf.descripcion LIKE ? OR r.nota LIKE ?)');
+    const como = `%${filtros.busqueda.trim()}%`;
+    valores.push(como, como, como);
+  }
+
+  const [filas] = await pool.query(
+    `SELECT r.id, r.pago_fijo_id, pf.descripcion, pf.frecuencia, pf.activo,
+            DATE_FORMAT(r.periodo, '%Y-%m-%d') AS periodo,
+            DATE_FORMAT(r.pagado_en, '%Y-%m-%d') AS pagado_en,
+            r.comprobante, r.nota, r.creado_en, u.nombre_completo AS registrado_por
+       FROM pagos_fijos_registros r
+       JOIN pagos_fijos pf ON pf.id = r.pago_fijo_id
+       JOIN usuarios u ON u.id = r.registrado_por
+      WHERE ${condiciones.join(' AND ')}
+      ORDER BY r.pagado_en DESC, r.id DESC
+      LIMIT ?`,
+    [...valores, filtros.limite ?? 300]
+  );
+
+  // Los meses que tienen algo pagado, para armar el filtro.
+  const [meses] = await pool.query(
+    `SELECT DATE_FORMAT(r.pagado_en, '%Y-%m') AS mes, COUNT(*) AS pagos
+       FROM pagos_fijos_registros r
+       JOIN pagos_fijos pf ON pf.id = r.pago_fijo_id
+      WHERE pf.empresa = ?
+      GROUP BY mes
+      ORDER BY mes DESC
+      LIMIT 36`,
+    [empresa]
+  );
+
+  return { empresa, registros: filas, meses };
+}
+
 // --------------------------------------------------------------- Cambios
 
 function revisarDatos(datos: DatosPagoFijo) {

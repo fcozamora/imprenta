@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Printer, RadioTower, Plus, Pencil, Trash2, X, LoaderCircle, CircleCheck,
-  TriangleAlert, Clock, History, RotateCcw, Receipt,
+  TriangleAlert, Clock, History, RotateCcw, Receipt, Search, ListChecks,
 } from 'lucide-react';
 import { api, mensajeDeError } from '../lib/api';
 import { useSesion } from '../lib/sesion';
@@ -53,6 +53,18 @@ const ESTADO: Record<Estado, { texto: string; clase: string; icono: typeof Clock
   ATRASADO: { texto: 'Atrasado', clase: 'bg-red-100 text-red-700', icono: TriangleAlert },
 };
 
+const MESES = [
+  'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
+  'julio', 'agosto', 'setiembre', 'octubre', 'noviembre', 'diciembre',
+];
+
+/** '2026-10' → 'Octubre 2026'. */
+function nombreDelMes(mes: string) {
+  const [anio, numero] = mes.split('-');
+  const texto = MESES[Number(numero) - 1] ?? mes;
+  return `${texto[0].toUpperCase()}${texto.slice(1)} ${anio}`;
+}
+
 /** "Cada mes el 15" o "Cada quincena, los días 15 y 30". */
 function comoSePaga(p: { frecuencia: Frecuencia; dia_1: number; dia_2: number | null }) {
   return p.frecuencia === 'MENSUAL'
@@ -68,13 +80,14 @@ export default function ControlPagos() {
   const [cobrando, setCobrando] = useState<PagoFijo | null>(null);
   const [viendo, setViendo] = useState<PagoFijo | null>(null);
   const [verInactivos, setVerInactivos] = useState(false);
+  const [vista, setVista] = useState<'PAGOS' | 'HISTORIAL'>('PAGOS');
 
   // El apartado es solo de administración. El servidor igual lo bloquea;
   // esto es para que a los demás no les quede la pantalla en blanco.
   const esDeAdministracion = puede('pagos_fijos.gestionar');
 
   const { data, isLoading } = useQuery({
-    enabled: esDeAdministracion,
+    enabled: esDeAdministracion && vista === 'PAGOS',
     queryKey: ['control-pagos', empresa, verInactivos],
     queryFn: async () =>
       (await api.get<{ empresa: Empresa; hoy: string; pagos: PagoFijo[] }>(
@@ -126,10 +139,12 @@ export default function ControlPagos() {
             Los pagos que se repiten todos los meses o cada quincena
           </p>
         </div>
-        <button onClick={() => setEditando('nuevo')} className="boton-primario">
-          <Plus className="h-4 w-4" />
-          Agregar pago
-        </button>
+        {vista === 'PAGOS' && (
+          <button onClick={() => setEditando('nuevo')} className="boton-primario">
+            <Plus className="h-4 w-4" />
+            Agregar pago
+          </button>
+        )}
       </div>
 
       <div className="flex gap-1 border-b border-slate-200">
@@ -148,17 +163,46 @@ export default function ControlPagos() {
             {texto}
           </button>
         ))}
-        <label className="ml-auto flex cursor-pointer items-center gap-2 px-2 py-2.5 text-xs
-                          text-slate-500">
-          <input
-            type="checkbox"
-            checked={verInactivos}
-            onChange={(e) => setVerInactivos(e.target.checked)}
-            className="h-3.5 w-3.5 rounded border-slate-300"
-          />
-          Ver los inactivos
-        </label>
+        {vista === 'PAGOS' && (
+          <label className="ml-auto flex cursor-pointer items-center gap-2 px-2 py-2.5 text-xs
+                            text-slate-500">
+            <input
+              type="checkbox"
+              checked={verInactivos}
+              onChange={(e) => setVerInactivos(e.target.checked)}
+              className="h-3.5 w-3.5 rounded border-slate-300"
+            />
+            Ver los inactivos
+          </label>
+        )}
       </div>
+
+      {/* Lo que falta por pagar, o todo lo que ya se pagó */}
+      <div className="flex flex-wrap gap-2">
+        {([
+          ['PAGOS', 'Por pagar', ListChecks],
+          ['HISTORIAL', 'Historial', History],
+        ] as const).map(([codigo, texto, Icono]) => (
+          <button
+            key={codigo}
+            onClick={() => setVista(codigo)}
+            className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium
+                        transition-all duration-150 active:scale-95 ${
+                          vista === codigo
+                            ? 'bg-marca-600 text-white shadow-sm'
+                            : 'bg-white text-slate-700 ring-1 ring-slate-300 hover:bg-slate-50'
+                        }`}
+          >
+            <Icono className="h-4 w-4" />
+            {texto}
+          </button>
+        ))}
+      </div>
+
+      {vista === 'HISTORIAL' ? (
+        <HistorialEmpresa empresa={empresa} />
+      ) : (
+      <>
 
       {atrasados > 0 && (
         <p className="flex items-center gap-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800
@@ -312,6 +356,8 @@ export default function ControlPagos() {
           })}
         </div>
       )}
+      </>
+      )}
 
       {editando && (
         <ModalPago
@@ -336,6 +382,148 @@ export default function ControlPagos() {
           onCerrar={() => setViendo(null)}
           onCambio={refrescar}
         />
+      )}
+    </div>
+  );
+}
+
+// ------------------------------------- Todo lo pagado, de una empresa
+
+interface RegistroEmpresa extends Comprobante {
+  pago_fijo_id: number;
+  descripcion: string;
+  frecuencia: Frecuencia;
+  activo: number;
+}
+
+function HistorialEmpresa({ empresa }: { empresa: Empresa }) {
+  const [mes, setMes] = useState('');
+  const [busqueda, setBusqueda] = useState('');
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['control-pagos', 'historial-empresa', empresa, mes, busqueda],
+    queryFn: async () =>
+      (await api.get<{
+        registros: RegistroEmpresa[];
+        meses: Array<{ mes: string; pagos: number }>;
+      }>(
+        `/control-pagos/historial?empresa=${empresa}` +
+          (mes ? `&mes=${mes}` : '') +
+          (busqueda.trim() ? `&q=${encodeURIComponent(busqueda.trim())}` : '')
+      )).data,
+  });
+
+  const registros = data?.registros ?? [];
+  const meses = data?.meses ?? [];
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <select className="campo w-auto" value={mes} onChange={(e) => setMes(e.target.value)}>
+          <option value="">Todos los meses</option>
+          {meses.map((m) => (
+            <option key={m.mes} value={m.mes}>
+              {nombreDelMes(m.mes)} ({m.pagos})
+            </option>
+          ))}
+        </select>
+        <div className="relative min-w-0 flex-1 sm:max-w-xs">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2
+                             text-slate-400" />
+          <input
+            className="campo pl-9"
+            value={busqueda}
+            placeholder="Comprobante, pago o nota"
+            onChange={(e) => setBusqueda(e.target.value)}
+          />
+        </div>
+      </div>
+
+      {isLoading ? (
+        <div className="grid place-items-center py-16">
+          <LoaderCircle className="h-6 w-6 animate-spin text-marca-600" />
+        </div>
+      ) : registros.length === 0 ? (
+        <div className="tarjeta grid place-items-center py-16 text-center">
+          <History className="mb-3 h-10 w-10 text-slate-300" />
+          <p className="font-medium text-slate-700">
+            {mes || busqueda.trim()
+              ? 'No hay pagos que coincidan con eso'
+              : `Todavía no se ha anotado ningún pago de ${empresa === 'IMPRENTA' ? 'la Imprenta' : 'la Radio'}`}
+          </p>
+        </div>
+      ) : (
+        <>
+          <p className="text-xs text-slate-500">
+            {registros.length === 1
+              ? '1 pago anotado'
+              : `${registros.length} pagos anotados`}
+            {mes ? ` en ${nombreDelMes(mes)}` : ''}
+          </p>
+
+          {/* En pantalla ancha, una tabla; en el teléfono, tarjetas */}
+          <div className="hidden overflow-hidden rounded-xl bg-white shadow-sm ring-1
+                          ring-slate-200 sm:block">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs
+                               font-semibold uppercase tracking-wide text-slate-500">
+                  <th className="px-4 py-3">Pagado</th>
+                  <th className="px-4 py-3">Pago</th>
+                  <th className="px-4 py-3">Vencimiento</th>
+                  <th className="px-4 py-3">Comprobante</th>
+                  <th className="px-4 py-3">Anotado por</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {registros.map((r) => (
+                  <tr key={r.id} className="align-top">
+                    <td className="whitespace-nowrap px-4 py-3 text-slate-700">
+                      {fecha(r.pagado_en)}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="font-medium text-slate-900">{r.descripcion}</span>
+                      {!r.activo && (
+                        <span className="ml-2 rounded-full bg-slate-200 px-2 py-0.5 text-[11px]
+                                         font-semibold text-slate-600">
+                          Inactivo
+                        </span>
+                      )}
+                      {r.nota && <p className="text-xs text-slate-500">{r.nota}</p>}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 text-slate-600">
+                      {fecha(r.periodo)}
+                    </td>
+                    <td className="px-4 py-3 font-mono text-slate-800">{r.comprobante}</td>
+                    <td className="px-4 py-3 text-xs text-slate-500">
+                      {r.registrado_por}
+                      <br />
+                      {fechaHora(r.creado_en)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="space-y-2 sm:hidden">
+            {registros.map((r) => (
+              <div key={r.id} className="tarjeta">
+                <p className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="font-medium text-slate-900">{r.descripcion}</span>
+                  <span className="font-mono text-sm text-slate-800">{r.comprobante}</span>
+                </p>
+                <p className="mt-0.5 text-sm text-slate-600">
+                  Pagado el {fecha(r.pagado_en)} · vencimiento {fecha(r.periodo)}
+                </p>
+                {r.nota && <p className="text-xs text-slate-500">{r.nota}</p>}
+                <p className="mt-0.5 text-xs text-slate-500">
+                  Anotado por {r.registrado_por} el {fechaHora(r.creado_en)}
+                </p>
+              </div>
+            ))}
+          </div>
+        </>
       )}
     </div>
   );

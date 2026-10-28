@@ -50,6 +50,26 @@ rutasPagosFijos.get('/', async (req, res, next) => {
   }
 });
 
+// Todo lo pagado en una empresa: la vista de Historial.
+rutasPagosFijos.get('/historial', async (req, res, next) => {
+  try {
+    const empresa = pagosFijos.EMPRESAS.includes(req.query.empresa as any)
+      ? (req.query.empresa as pagosFijos.Empresa)
+      : 'IMPRENTA';
+    const mes = typeof req.query.mes === 'string' && /^\d{4}-\d{2}$/.test(req.query.mes)
+      ? req.query.mes
+      : null;
+    res.json(
+      await pagosFijos.historialDeEmpresa(empresa, {
+        mes,
+        busqueda: typeof req.query.q === 'string' ? req.query.q : null,
+      })
+    );
+  } catch (error) {
+    next(error);
+  }
+});
+
 rutasPagosFijos.get('/:id/historial', async (req, res, next) => {
   try {
     res.json(await pagosFijos.historial(Number(req.params.id)));
