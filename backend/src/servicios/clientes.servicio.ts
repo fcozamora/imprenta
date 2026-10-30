@@ -5,6 +5,8 @@ export interface DatosCliente {
   cedula: string;
   nombre: string;
   nombreComercial?: string | null;
+  /** Numero de expediente que lleva la imprenta. */
+  expediente?: string | null;
   telefono: string;
   telefonoWa?: string | null;
   emailFacturacion?: string | null;
@@ -26,7 +28,7 @@ export function normalizarWhatsapp(telefono: string): string | null {
 /** Búsqueda para el autorrelleno: cédula exacta. */
 export async function porCedula(cedula: string) {
   const [filas] = await pool.query(
-    `SELECT id, cedula, nombre, nombre_comercial, telefono, telefono_wa,
+    `SELECT id, cedula, nombre, nombre_comercial, expediente, telefono, telefono_wa,
             email_facturacion, notas
        FROM clientes
       WHERE cedula = ? AND activo = 1`,
@@ -46,13 +48,14 @@ export async function buscar(termino: string, limite = 50) {
   if (termino) {
     const patron = `%${termino}%`;
     filtro = `AND (c.cedula LIKE ? OR c.nombre LIKE ?
-                   OR c.nombre_comercial LIKE ? OR c.telefono LIKE ?)`;
-    valores.push(patron, patron, patron, patron);
+                   OR c.nombre_comercial LIKE ? OR c.telefono LIKE ?
+                   OR c.expediente LIKE ?)`;
+    valores.push(patron, patron, patron, patron, patron);
   }
   valores.push(limite);
 
   const [filas] = await pool.query(
-    `SELECT c.id, c.cedula, c.nombre, c.nombre_comercial, c.telefono,
+    `SELECT c.id, c.cedula, c.nombre, c.nombre_comercial, c.expediente, c.telefono,
             c.telefono_wa, c.email_facturacion, c.creado_en,
             COUNT(o.id) AS total_ordenes,
             MAX(o.fecha_ingreso) AS ultima_orden
@@ -69,7 +72,7 @@ export async function buscar(termino: string, limite = 50) {
 
 export async function obtener(id: number) {
   const [filas] = await pool.query(
-    `SELECT id, cedula, nombre, nombre_comercial, telefono, telefono_wa,
+    `SELECT id, cedula, nombre, nombre_comercial, expediente, telefono, telefono_wa,
             email_facturacion, notas, creado_en
        FROM clientes WHERE id = ?`,
     [id]
@@ -124,13 +127,14 @@ export async function crear(datos: DatosCliente, creadoPor: number) {
 
   const [resultado] = await pool.query(
     `INSERT INTO clientes
-       (cedula, nombre, nombre_comercial, telefono, telefono_wa,
+       (cedula, nombre, nombre_comercial, expediente, telefono, telefono_wa,
         email_facturacion, notas, creado_por)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       datos.cedula,
       datos.nombre,
       datos.nombreComercial ?? null,
+      datos.expediente?.trim() || null,
       datos.telefono,
       wa,
       datos.emailFacturacion ?? null,
@@ -161,6 +165,9 @@ export async function actualizar(id: number, datos: Partial<DatosCliente>, hecho
         SET cedula = COALESCE(?, cedula),
             nombre = COALESCE(?, nombre),
             nombre_comercial = COALESCE(?, nombre_comercial),
+            -- A diferencia de los demas, el expediente si se puede borrar:
+            -- manda el valor solo cuando la pantalla lo incluye.
+            expediente = IF(?, NULLIF(?, ''), expediente),
             telefono = COALESCE(?, telefono),
             telefono_wa = COALESCE(?, telefono_wa),
             email_facturacion = COALESCE(?, email_facturacion),
@@ -170,6 +177,8 @@ export async function actualizar(id: number, datos: Partial<DatosCliente>, hecho
       datos.cedula ?? null,
       datos.nombre ?? null,
       datos.nombreComercial ?? null,
+      datos.expediente !== undefined ? 1 : 0,
+      datos.expediente?.trim() ?? '',
       datos.telefono ?? null,
       wa,
       datos.emailFacturacion ?? null,

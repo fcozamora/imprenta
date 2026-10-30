@@ -316,7 +316,7 @@ export async function plantilla(id: number, siguienteNumeracion = false) {
             o.fecha_entrega, o.observaciones, o.medio_muestra, o.email_muestra,
             o.contacto_nombre, o.contacto_dato, o.urgente, o.motivo_urgencia,
             c.cedula AS cliente_cedula, c.nombre AS cliente_nombre,
-            c.nombre_comercial, c.telefono, c.email_facturacion,
+            c.nombre_comercial, c.expediente, c.telefono, c.email_facturacion,
             v.nombre_completo AS vendedor
        FROM ordenes o
        JOIN clientes c ON c.id = o.cliente_id
@@ -485,6 +485,7 @@ export async function plantilla(id: number, siguienteNumeracion = false) {
       cedula: orden.cliente_cedula,
       nombre: orden.cliente_nombre,
       nombre_comercial: orden.nombre_comercial,
+      expediente: orden.expediente,
       telefono: orden.telefono,
       email_facturacion: orden.email_facturacion,
     },
@@ -512,7 +513,8 @@ export async function obtener(id: number) {
             o.medio_muestra, o.email_muestra, o.contacto_nombre, o.contacto_dato,
             o.urgente, o.motivo_urgencia,
             c.id AS cliente_id, c.cedula AS cliente_cedula, c.nombre AS cliente,
-            c.nombre_comercial, c.telefono, c.telefono_wa, c.email_facturacion,
+            c.nombre_comercial, c.expediente, c.telefono, c.telefono_wa,
+            c.email_facturacion,
             o.vendedor_id, v.nombre_completo AS vendedor,
             r.nombre_completo AS registrada_por
        FROM ordenes o

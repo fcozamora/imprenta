@@ -62,9 +62,17 @@ export default function ImprimirOrden() {
               <p className="tel">WhatsApp 2460-1930</p>
             </div>
           </div>
-          <div className="numero-caja">
-            <span className="numero-rotulo">Orden N°</span>
-            <span className="numero">{orden.numero_orden}</span>
+          <div className="cabecera-numeros">
+            {orden.expediente && (
+              <div className="numero-caja expediente">
+                <span className="numero-rotulo">Expediente</span>
+                <span className="numero">{orden.expediente}</span>
+              </div>
+            )}
+            <div className="numero-caja">
+              <span className="numero-rotulo">Orden N°</span>
+              <span className="numero">{orden.numero_orden}</span>
+            </div>
           </div>
         </header>
 

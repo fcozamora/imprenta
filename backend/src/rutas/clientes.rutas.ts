@@ -79,6 +79,7 @@ const esquemaCliente = z.object({
   cedula: z.string().trim().min(5, 'La cédula es obligatoria'),
   nombre: z.string().trim().min(3, 'El nombre del cliente es obligatorio'),
   nombreComercial: z.string().trim().optional().nullable(),
+  expediente: z.string().trim().max(40, 'El expediente es muy largo').optional().nullable(),
   telefono: z.string().trim().min(8, 'El teléfono es obligatorio'),
   telefonoWa: z.string().trim().optional().nullable(),
   emailFacturacion: z.string().email('Correo inválido').optional().nullable().or(z.literal('')),

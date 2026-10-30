@@ -2,7 +2,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
   ArrowLeft, LoaderCircle, MessageCircle, Package, FileText, Mail, IdCard, Pencil,
-  RotateCcw,
+  RotateCcw, FolderOpen,
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { useSesion } from '../lib/sesion';
@@ -111,7 +111,13 @@ export default function DetalleCliente() {
               )}
             </p>
           </div>
-          <div className="sm:col-span-2">
+          <div>
+            <p className="flex items-center gap-1.5 text-xs uppercase tracking-wide text-slate-400">
+              <FolderOpen className="h-3.5 w-3.5" /> Expediente
+            </p>
+            <p className="mt-0.5 font-mono text-slate-900">{c.expediente || '—'}</p>
+          </div>
+          <div>
             <p className="flex items-center gap-1.5 text-xs uppercase tracking-wide text-slate-400">
               <Mail className="h-3.5 w-3.5" /> Email de facturación
             </p>

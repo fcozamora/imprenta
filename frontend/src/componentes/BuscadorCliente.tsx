@@ -10,6 +10,8 @@ export interface Cliente {
   cedula: string;
   nombre: string;
   nombre_comercial: string | null;
+  /** Número de expediente que lleva la imprenta. */
+  expediente?: string | null;
   telefono: string;
   telefono_wa: string | null;
   email_facturacion: string | null;
@@ -20,7 +22,10 @@ interface Props {
   onCambio: (cliente: Cliente | null) => void;
 }
 
-const VACIO = { cedula: '', nombre: '', nombreComercial: '', telefono: '', emailFacturacion: '' };
+const VACIO = {
+  cedula: '', nombre: '', nombreComercial: '', expediente: '',
+  telefono: '', emailFacturacion: '',
+};
 
 /** Si lo escrito son puros numeros, lo tomamos como cedula. */
 function pareceCedula(texto: string) {
@@ -105,6 +110,7 @@ export default function BuscadorCliente({ cliente, onCambio }: Props) {
       cedula: cliente.cedula,
       nombre: cliente.nombre,
       nombreComercial: cliente.nombre_comercial ?? '',
+      expediente: cliente.expediente ?? '',
       telefono: cliente.telefono,
       emailFacturacion: cliente.email_facturacion ?? '',
     });
@@ -133,6 +139,7 @@ export default function BuscadorCliente({ cliente, onCambio }: Props) {
         cedula: form.cedula.trim(),
         nombre: form.nombre.trim(),
         nombreComercial: form.nombreComercial.trim() || null,
+        expediente: form.expediente.trim(),
         telefono: form.telefono.trim(),
         emailFacturacion: form.emailFacturacion.trim() || null,
       };
@@ -296,6 +303,15 @@ export default function BuscadorCliente({ cliente, onCambio }: Props) {
               className="campo"
               value={form.nombreComercial}
               onChange={(e) => setForm({ ...form, nombreComercial: e.target.value })}
+            />
+          </div>
+          <div>
+            <label className="etiqueta">N° de expediente</label>
+            <input
+              className="campo"
+              value={form.expediente}
+              placeholder="Ej. EXP-2026-014"
+              onChange={(e) => setForm({ ...form, expediente: e.target.value })}
             />
           </div>
           <div>

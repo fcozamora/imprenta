@@ -83,6 +83,11 @@ export default function Clientes() {
                       {c.nombre_comercial && (
                         <p className="text-xs text-slate-500">{c.nombre_comercial}</p>
                       )}
+                      {c.expediente && (
+                        <p className="text-xs text-slate-500">
+                          Expediente <span className="font-mono">{c.expediente}</span>
+                        </p>
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       {contactar && c.telefono_wa ? (

@@ -14,6 +14,7 @@ export default function EditarCliente({ cliente, onCerrar }: Props) {
     cedula: cliente.cedula ?? '',
     nombre: cliente.nombre ?? '',
     nombreComercial: cliente.nombre_comercial ?? '',
+    expediente: cliente.expediente ?? '',
     telefono: cliente.telefono ?? '',
     emailFacturacion: cliente.email_facturacion ?? '',
     notas: cliente.notas ?? '',
@@ -26,6 +27,7 @@ export default function EditarCliente({ cliente, onCerrar }: Props) {
         cedula: form.cedula.trim(),
         nombre: form.nombre.trim(),
         nombreComercial: form.nombreComercial.trim() || null,
+        expediente: form.expediente.trim(),
         telefono: form.telefono.trim(),
         emailFacturacion: form.emailFacturacion.trim() || null,
         notas: form.notas.trim() || null,
@@ -78,6 +80,16 @@ export default function EditarCliente({ cliente, onCerrar }: Props) {
               className="campo"
               value={form.nombreComercial}
               onChange={(e) => setForm({ ...form, nombreComercial: e.target.value })}
+            />
+          </div>
+
+          <div>
+            <label className="etiqueta">N° de expediente</label>
+            <input
+              className="campo"
+              value={form.expediente}
+              placeholder="Ej. EXP-2026-014"
+              onChange={(e) => setForm({ ...form, expediente: e.target.value })}
             />
           </div>
 

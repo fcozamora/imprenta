@@ -99,6 +99,15 @@
 .numero-rotulo { font-size: 7.5pt; text-transform: uppercase; letter-spacing: 0.5pt; }
 .numero { font-size: 20pt; font-weight: 700; line-height: 1; }
 
+/* El expediente del cliente, a la par del numero de orden */
+.cabecera-numeros { display: flex; align-items: stretch; gap: 3mm; }
+.numero-caja.expediente {
+  border-style: dashed;
+  justify-content: center;
+  align-items: flex-end;
+}
+.numero-caja.expediente .numero { font-size: 13pt; }
+
 .bloque { display: flex; gap: 4mm; margin-bottom: 3mm; }
 .rejilla-4 {
   flex: 1;
