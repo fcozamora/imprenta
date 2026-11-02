@@ -83,17 +83,19 @@ const ROTULO: Record<ResumenPago['estado'], { texto: string; clase: string }> = 
  * total, queda cancelada sola.
  */
 export default function PagoOrden({
-  ordenId, pago, abonos,
+  ordenId, pago, abonos, soloLectura = false,
 }: {
   ordenId: number;
   pago: ResumenPago;
   abonos: Abono[];
+  /** En una orden anulada el pago se ve, pero no se toca. */
+  soloLectura?: boolean;
 }) {
   const { puede } = useSesion();
   const cliente = useQueryClient();
   const [abriendo, setAbriendo] = useState(false);
 
-  const anota = puede('pagos.registrar');
+  const anota = puede('pagos.registrar') && !soloLectura;
   const rotulo = ROTULO[pago.estado];
 
   const refrescar = () => {

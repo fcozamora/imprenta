@@ -61,8 +61,10 @@ function cambiosSegunPermiso(registros: any[], req: Request) {
 // ---------------------------------------------------------------- Esquemas
 
 const esquemaTalonario = z.object({
+  // Con "suelto" esta es la cantidad del artículo, no la de blocks.
   cantidadBlocks: z.number().int().positive(),
   hojasPorBlock: z.number().int().positive(),
+  suelto: z.boolean().optional(),
   tamanoId: z.number().int().positive().optional().nullable(),
   tamanoOtro: z.string().trim().optional().nullable(),
   tipoCopiaId: z.number().int().positive(),
@@ -379,6 +381,32 @@ rutasOrdenes.put(
           ),
           req
         )
+      );
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// Eliminacion logica: la orden se guarda entera, pero sale del tablero.
+rutasOrdenes.post('/ordenes/:id/anular', requierePermiso('ordenes.anular'), async (req, res, next) => {
+  try {
+    const { motivo } = z
+      .object({ motivo: z.string().trim().min(3, 'Escriba por qué se anula la orden').max(255) })
+      .parse(req.body);
+    res.json(ordenSegunPermiso(await ordenes.anular(Number(req.params.id), motivo, req.usuario!.id), req));
+  } catch (error) {
+    next(error);
+  }
+});
+
+rutasOrdenes.post(
+  '/ordenes/:id/reactivar',
+  requierePermiso('ordenes.anular'),
+  async (req, res, next) => {
+    try {
+      res.json(
+        ordenSegunPermiso(await ordenes.reactivar(Number(req.params.id), req.usuario!.id), req)
       );
     } catch (error) {
       next(error);

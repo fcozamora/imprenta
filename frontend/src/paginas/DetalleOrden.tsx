@@ -2,7 +2,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft, Printer, MessageCircle, LoaderCircle, Clock, User, Hand, Pencil, Zap,
-  History,
+  History, Trash2, RotateCcw, X,
 } from 'lucide-react';
 import { api, mensajeDeError } from '../lib/api';
 import { useSesion } from '../lib/sesion';
@@ -25,9 +25,24 @@ export default function DetalleOrden() {
     queryFn: async () => (await api.get(ruta)).data,
   });
 
+  const [anulando, setAnulando] = useState(false);
+
   const tomar = useMutation({
     mutationFn: (lineaId: number) => api.post(`/lineas/${lineaId}/tomar`),
     onSuccess: () => cliente.invalidateQueries({ queryKey: ['orden'] }),
+    onError: (e) => alert(mensajeDeError(e)),
+  });
+
+  const refrescarOrden = () => {
+    cliente.invalidateQueries({ queryKey: ['orden'] });
+    cliente.invalidateQueries({ queryKey: ['ordenes'] });
+  };
+
+  const reactivar = useMutation({
+    mutationFn: async (): Promise<void> => {
+      await api.post(`/ordenes/${orden.id}/reactivar`);
+    },
+    onSuccess: refrescarOrden,
     onError: (e) => alert(mensajeDeError(e)),
   });
 
@@ -82,8 +97,8 @@ export default function DetalleOrden() {
           </div>
         </div>
 
-        <div className="flex gap-2">
-          {puede('ordenes.editar') && (
+        <div className="flex flex-wrap gap-2">
+          {puede('ordenes.editar') && orden.estado !== 'ANULADA' && (
             <Link to={`/ordenes/${orden.id}/editar`} className="boton-secundario">
               <Pencil className="h-4 w-4" />
               Editar
@@ -93,8 +108,37 @@ export default function DetalleOrden() {
             <Printer className="h-4 w-4" />
             Imprimir
           </Link>
+          {puede('ordenes.anular') && (
+            orden.estado === 'ANULADA' ? (
+              <button
+                onClick={() => {
+                  if (confirm('¿Volver a activar esta orden?')) reactivar.mutate();
+                }}
+                className="boton-secundario"
+              >
+                <RotateCcw className="h-4 w-4" />
+                Reactivar
+              </button>
+            ) : (
+              <button
+                onClick={() => setAnulando(true)}
+                className="boton-secundario text-red-600 hover:bg-red-50 hover:text-red-700"
+              >
+                <Trash2 className="h-4 w-4" />
+                Anular
+              </button>
+            )
+          )}
         </div>
       </div>
+
+      {orden.estado === 'ANULADA' && (
+        <p className="flex items-center gap-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800
+                      ring-1 ring-red-200">
+          <Trash2 className="h-4 w-4 shrink-0" />
+          Esta orden está anulada. Se conserva para consulta, pero no se le puede trabajar.
+        </p>
+      )}
 
       {/* ---------- Cliente ---------- */}
       <div className="tarjeta">
@@ -210,7 +254,7 @@ export default function DetalleOrden() {
                   {linea.disenador}
                 </p>
               ) : (
-                puede('ordenes.tomar') && !linea.finalizada && (
+                puede('ordenes.tomar') && !linea.finalizada && orden.estado !== 'ANULADA' && (
                   <button
                     onClick={() => tomar.mutate(linea.id)}
                     disabled={tomar.isPending}
@@ -307,10 +351,100 @@ export default function DetalleOrden() {
       ))}
 
       {puede('ordenes.ver_precio') && orden.pago && (
-        <PagoOrden ordenId={orden.id} pago={orden.pago} abonos={orden.abonos ?? []} />
+        <PagoOrden
+          ordenId={orden.id}
+          pago={orden.pago}
+          abonos={orden.abonos ?? []}
+          soloLectura={orden.estado === 'ANULADA'}
+        />
       )}
 
       <CambiosDeLaOrden ordenId={orden.id} />
+
+      {anulando && (
+        <ModalAnular
+          orden={orden}
+          onCerrar={() => setAnulando(false)}
+          onAnulada={() => { setAnulando(false); refrescarOrden(); }}
+        />
+      )}
+    </div>
+  );
+}
+
+/**
+ * Anular pide el motivo: es lo unico que queda escrito de por que se
+ * cayo el trabajo, y sirve despues para entender la bitacora.
+ */
+function ModalAnular({
+  orden, onCerrar, onAnulada,
+}: {
+  orden: any;
+  onCerrar: () => void;
+  onAnulada: () => void;
+}) {
+  const [motivo, setMotivo] = useState('');
+  const [error, setError] = useState('');
+
+  const anular = useMutation({
+    mutationFn: async (): Promise<void> => {
+      await api.post(`/ordenes/${orden.id}/anular`, { motivo: motivo.trim() });
+    },
+    onSuccess: onAnulada,
+    onError: (e) => setError(mensajeDeError(e)),
+  });
+
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-slate-900/40 p-4">
+      <div className="w-full max-w-sm rounded-xl bg-white p-5 shadow-xl">
+        <div className="mb-4 flex items-start justify-between gap-3">
+          <h2 className="flex items-center gap-2 font-semibold text-slate-900">
+            <Trash2 className="h-4 w-4 text-red-500" />
+            Anular la orden #{orden.numero_orden}
+          </h2>
+          <button onClick={onCerrar} className="shrink-0 text-slate-400 hover:text-slate-600">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <p className="mb-3 text-sm text-slate-600">
+          La orden sale del tablero y ya no se le puede marcar etapas ni anotar pagos, pero
+          queda guardada con todo su historial. Se puede volver a activar después.
+        </p>
+
+        <div className="space-y-3">
+          <div>
+            <label className="etiqueta">
+              ¿Por qué se anula? <span className="text-red-500">*</span>
+            </label>
+            <input
+              className="campo"
+              value={motivo}
+              autoFocus
+              placeholder="Ej. El cliente la canceló"
+              onChange={(e) => setMotivo(e.target.value)}
+            />
+          </div>
+
+          {error && (
+            <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 ring-1 ring-red-200">
+              {error}
+            </p>
+          )}
+
+          <div className="flex gap-2 pt-1">
+            <button
+              onClick={() => anular.mutate()}
+              disabled={anular.isPending || motivo.trim().length < 3}
+              className="boton-primario flex-1 bg-red-600 hover:bg-red-700"
+            >
+              {anular.isPending && <LoaderCircle className="h-4 w-4 animate-spin" />}
+              Anular la orden
+            </button>
+            <button onClick={onCerrar} className="boton-secundario">Cancelar</button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -380,8 +514,13 @@ function Especificaciones({ linea }: { linea: any }) {
   switch (linea.tipo_codigo) {
     case 'TALONARIOS':
       if (d) {
-        filas.push(['Blocks', `${numero(d.cantidad_blocks)} de ${numero(d.hojas_por_block)}`]);
-        filas.push(['Total de hojas', numero(d.total_hojas)]);
+        if (d.suelto === 1) {
+          // Va suelto: no son blocks, es la cantidad del artículo.
+          filas.push(['Cantidad', `${numero(d.total_hojas)} · suelto, sin block`]);
+        } else {
+          filas.push(['Blocks', `${numero(d.cantidad_blocks)} de ${numero(d.hojas_por_block)}`]);
+          filas.push(['Total de hojas', numero(d.total_hojas)]);
+        }
         filas.push(['Tamaño', d.tamano ?? d.tamano_otro ?? '—']);
         filas.push(['Copias', d.tipo_copia]);
         filas.push(['Tinta', d.tinta]);

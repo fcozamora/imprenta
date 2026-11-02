@@ -213,8 +213,12 @@ function DetalleLinea({ linea }: { linea: any }) {
   switch (linea.tipo_codigo) {
     case 'TALONARIOS':
       if (d) {
-        campos.push(['Blocks', `${d.cantidad_blocks} de ${d.hojas_por_block}`]);
-        campos.push(['Total hojas', String(d.total_hojas)]);
+        if (d.suelto === 1) {
+          campos.push(['Cantidad', `${d.total_hojas} sueltos`, 2]);
+        } else {
+          campos.push(['Blocks', `${d.cantidad_blocks} de ${d.hojas_por_block}`]);
+          campos.push(['Total hojas', String(d.total_hojas)]);
+        }
         campos.push(['Tamaño', d.tamano ?? d.tamano_otro ?? '—', 2]);
         campos.push(['Copias', d.tipo_copia]);
         campos.push(['Tinta', d.tinta, 2]);

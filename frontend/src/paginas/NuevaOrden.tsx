@@ -179,7 +179,9 @@ export default function NuevaOrden() {
           ...base,
           talonario: {
             cantidadBlocks: Number(l.cantidadBlocks),
-            hojasPorBlock: Number(l.hojasPorBlock),
+            // Si va suelto no hay hojas por block: cada artículo es uno.
+            hojasPorBlock: l.suelto ? 1 : Number(l.hojasPorBlock),
+            suelto: l.suelto,
             tamanoId: l.tamanoId ? Number(l.tamanoId) : null,
             tamanoOtro: l.tamanoOtro.trim() || null,
             tipoCopiaId: Number(l.tipoCopiaId),

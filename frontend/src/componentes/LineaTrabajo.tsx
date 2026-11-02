@@ -43,6 +43,8 @@ export interface DatosLinea {
   // Talonarios
   cantidadBlocks: number | '';
   hojasPorBlock: number | '';
+  /** El trabajo va suelto, no en block: tarjetas grandes, por ejemplo. */
+  suelto: boolean;
   tamanoId: number | '';
   tamanoOtro: string;
   tipoCopiaId: number | '';
@@ -68,7 +70,8 @@ export function lineaVacia(): DatosLinea {
     clave: nuevoId(), muestra: null, muestraArchivoId: null,
     tipoTrabajoId: '', nombreTrabajo: '', cantidad: '', disenadorId: '',
     precio: '', archivoSinCambios: false,
-    observaciones: '', cantidadBlocks: '', hojasPorBlock: '', tamanoId: '', tamanoOtro: '',
+    observaciones: '', cantidadBlocks: '', hojasPorBlock: '', suelto: false,
+    tamanoId: '', tamanoOtro: '',
     tipoCopiaId: '', tinta: '', encolado: false, perforado: false, grapado: false, carbon: false,
     numeracionInicial: '', papeles: [], tipoSobreId: '', tamano: '', materialId: '',
     telaId: '', perfilImpresion: '', codigoSello: '', tintaId: '',
@@ -79,7 +82,7 @@ export function lineaVacia(): DatosLinea {
 export function numeracionFinal(l: DatosLinea): number | null {
   const ni = Number(l.numeracionInicial);
   const blocks = Number(l.cantidadBlocks);
-  const hojas = Number(l.hojasPorBlock);
+  const hojas = l.suelto ? 1 : Number(l.hojasPorBlock);
   if (!ni || !blocks || !hojas) return null;
   return ni + blocks * hojas - 1;
 }
@@ -158,7 +161,8 @@ export default function LineaTrabajo({
       const original = catalogos.papeles.find((p) => p.es_original === 1);
       if (original) papeles[0] = original.id;
     }
-    onCambio({ tipoCopiaId: id, papeles });
+    // Solo un sencillo puede ir suelto.
+    onCambio({ tipoCopiaId: id, papeles, ...(total === 1 ? {} : { suelto: false }) });
   }
 
   function cambiarPapel(posicion: number, papelId: number) {
@@ -256,7 +260,7 @@ export default function LineaTrabajo({
             </div>
             <div>
               <label className="etiqueta">
-                {codigo === 'TALONARIOS' ? 'Cantidad de blocks' : 'Cantidad'}{' '}
+                {codigo === 'TALONARIOS' && !linea.suelto ? 'Cantidad de blocks' : 'Cantidad'}{' '}
                 <span className="text-red-500">*</span>
               </label>
               <input
@@ -520,19 +524,31 @@ export default function LineaTrabajo({
                   )}
                 </div>
 
-                <div>
-                  <label className="etiqueta">Blocks de (hojas) <span className="text-red-500">*</span></label>
-                  <input
-                    type="number"
-                    min={1}
-                    className="campo"
-                    value={linea.hojasPorBlock}
-                    onChange={(e) =>
-                      onCambio({ hojasPorBlock: e.target.value === '' ? '' : Number(e.target.value) })
-                    }
-                    placeholder="100"
-                  />
-                </div>
+                {linea.suelto ? (
+                  <div>
+                    <label className="etiqueta">Presentación</label>
+                    <div className="campo bg-slate-100 text-slate-600">
+                      Suelto, sin block
+                    </div>
+                    <p className="mt-1 text-xs text-slate-500">
+                      Se piden {Number(linea.cantidadBlocks) || 0} artículos, no blocks.
+                    </p>
+                  </div>
+                ) : (
+                  <div>
+                    <label className="etiqueta">Blocks de (hojas) <span className="text-red-500">*</span></label>
+                    <input
+                      type="number"
+                      min={1}
+                      className="campo"
+                      value={linea.hojasPorBlock}
+                      onChange={(e) =>
+                        onCambio({ hojasPorBlock: e.target.value === '' ? '' : Number(e.target.value) })
+                      }
+                      placeholder="100"
+                    />
+                  </div>
+                )}
               </div>
 
               <div>
@@ -554,6 +570,28 @@ export default function LineaTrabajo({
                     </button>
                   ))}
                 </div>
+                {/* Tarjetas grandes y cosas asi: sencillas y sin block */}
+                {copias === 1 && (
+                  <label
+                    className={`mt-2 inline-flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2
+                                text-sm font-medium ring-1 transition-colors ${
+                                  linea.suelto
+                                    ? 'bg-marca-50 text-marca-700 ring-marca-300'
+                                    : 'bg-white text-slate-700 ring-slate-300 hover:bg-slate-50'
+                                }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={linea.suelto}
+                      onChange={(e) =>
+                        onCambio({ suelto: e.target.checked, hojasPorBlock: '' })
+                      }
+                      className="h-4 w-4 rounded border-slate-300"
+                    />
+                    Suelto
+                    <span className="font-normal text-slate-500">· no va en block</span>
+                  </label>
+                )}
               </div>
 
               {/* Papel de cada hoja: el original va fijo cuando hay copias */}
@@ -662,8 +700,11 @@ export default function LineaTrabajo({
                   </div>
                   {nf !== null && (
                     <p className="mt-1 text-xs text-slate-500">
-                      {Number(linea.cantidadBlocks)} × {Number(linea.hojasPorBlock)} ={' '}
-                      {(Number(linea.cantidadBlocks) * Number(linea.hojasPorBlock)).toLocaleString('es-CR')} hojas
+                      {linea.suelto
+                        ? `${Number(linea.cantidadBlocks).toLocaleString('es-CR')} artículos sueltos`
+                        : `${Number(linea.cantidadBlocks)} × ${Number(linea.hojasPorBlock)} = ${(
+                            Number(linea.cantidadBlocks) * Number(linea.hojasPorBlock)
+                          ).toLocaleString('es-CR')} hojas`}
                     </p>
                   )}
                 </div>

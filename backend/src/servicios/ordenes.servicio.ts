@@ -9,8 +9,11 @@ const TIPOS_PRODUCCION = ['TALONARIOS', 'IMPRESION_DIGITAL', 'HP_LATEX', 'SOBRES
 // ---------------------------------------------------------------- Tipos
 
 export interface LineaTalonario {
+  /** Con `suelto`, es la cantidad del artículo; si no, cuántos blocks. */
   cantidadBlocks: number;
   hojasPorBlock: number;
+  /** El trabajo no va en block: tarjetas grandes, por ejemplo. */
+  suelto?: boolean;
   tamanoId?: number | null;
   tamanoOtro?: string | null;
   tipoCopiaId: number;
@@ -81,13 +84,16 @@ async function insertarDetalle(cx: PoolConnection, lineaId: number, linea: Linea
       }
       await cx.query(
         `INSERT INTO detalle_talonario
-           (linea_id, cantidad_blocks, hojas_por_block, tamano_id, tamano_otro,
+           (linea_id, cantidad_blocks, hojas_por_block, suelto, tamano_id, tamano_otro,
             tipo_copia_id, tinta, encolado, perforado, grapado, carbon, numeracion_inicial)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           lineaId,
+          // Suelto: la cantidad del articulo va donde irian los blocks y
+          // cada uno cuenta como una hoja, para que el total siga saliendo.
           t.cantidadBlocks,
-          t.hojasPorBlock,
+          t.suelto ? 1 : t.hojasPorBlock,
+          t.suelto ? 1 : 0,
           t.tamanoId ?? null,
           t.tamanoOtro ?? null,
           t.tipoCopiaId,
@@ -388,8 +394,8 @@ export async function plantilla(id: number, siguienteNumeracion = false) {
     switch (l.tipo_codigo) {
       case 'TALONARIOS': {
         const [d] = await pool.query(
-          `SELECT cantidad_blocks, hojas_por_block, tamano_id, tamano_otro, tipo_copia_id,
-                  tinta, encolado, perforado, grapado, carbon,
+          `SELECT cantidad_blocks, hojas_por_block, suelto, tamano_id, tamano_otro,
+                  tipo_copia_id, tinta, encolado, perforado, grapado, carbon,
                   numeracion_inicial, numeracion_final
              FROM detalle_talonario WHERE linea_id = ?`,
           [l.id]
@@ -406,7 +412,8 @@ export async function plantilla(id: number, siguienteNumeracion = false) {
 
           Object.assign(base, {
             cantidadBlocks: t.cantidad_blocks,
-            hojasPorBlock: t.hojas_por_block,
+            hojasPorBlock: t.suelto === 1 ? '' : t.hojas_por_block,
+            suelto: t.suelto === 1,
             tamanoId: t.tamano_id ?? '',
             tamanoOtro: t.tamano_otro ?? '',
             tipoCopiaId: t.tipo_copia_id,
@@ -974,7 +981,8 @@ function aplanarLinea(l: LineaOrden & { lineaId: number }) {
     archivoSinCambios: l.archivoSinCambios === true,
     observaciones: l.observaciones ?? '',
     cantidadBlocks: t?.cantidadBlocks ?? '',
-    hojasPorBlock: t?.hojasPorBlock ?? '',
+    hojasPorBlock: t?.suelto ? '' : (t?.hojasPorBlock ?? ''),
+    suelto: t?.suelto === true,
     tamanoId: t?.tamanoId ?? '',
     tamanoOtro: t?.tamanoOtro ?? '',
     tipoCopiaId: t?.tipoCopiaId ?? '',
@@ -1066,7 +1074,12 @@ function describirCambios(antes: any, datos: OrdenCompleta, n: Nombres): string[
     comparar(del('Precio'), previa.precio, ahora.precio);
     comparar(del('Archivo sin cambios'), previa.archivoSinCambios, ahora.archivoSinCambios);
     comparar(del('Observaciones'), previa.observaciones, ahora.observaciones);
-    comparar(del('Blocks'), previa.cantidadBlocks, ahora.cantidadBlocks);
+    comparar(del('Suelto'), previa.suelto, ahora.suelto);
+    comparar(
+      del(ahora.suelto ? 'Cantidad del artículo' : 'Blocks'),
+      previa.cantidadBlocks,
+      ahora.cantidadBlocks
+    );
     comparar(del('Hojas por block'), previa.hojasPorBlock, ahora.hojasPorBlock);
     comparar(del('Tamaño'), previa.tamanoId, ahora.tamanoId, porId(n.tamanos));
     comparar(del('Tamaño'), previa.tamanoOtro, ahora.tamanoOtro);
@@ -1261,7 +1274,7 @@ export interface DatosAvance {
 export async function avanzarEtapa(lineaId: number, usuarioId: number, datos: DatosAvance = {}) {
   // Antes de avanzar averiguamos cuál sería la siguiente etapa.
   const [previo] = await pool.query(
-    `SELECT ol.id, tt.codigo AS tipo_codigo,
+    `SELECT ol.id, tt.codigo AS tipo_codigo, o.estado AS estado_orden,
             (SELECT e.codigo
                FROM flujo_etapas f
                JOIN etapas e ON e.id = f.etapa_id
@@ -1273,6 +1286,7 @@ export async function avanzarEtapa(lineaId: number, usuarioId: number, datos: Da
             dt.sin_confeccion AS sin_confeccion_actual,
             dt.perfil_impresion AS perfil_actual
        FROM orden_lineas ol
+       JOIN ordenes o ON o.id = ol.orden_id
        JOIN tipos_trabajo tt ON tt.id = ol.tipo_trabajo_id
        LEFT JOIN detalle_textil dt ON dt.linea_id = ol.id
       WHERE ol.id = ?`,
@@ -1280,6 +1294,9 @@ export async function avanzarEtapa(lineaId: number, usuarioId: number, datos: Da
   );
   const info = (previo as any[])[0];
   if (!info) throw new ErrorHttp(404, 'Línea de orden no encontrada');
+  if (info.estado_orden === 'ANULADA') {
+    throw new ErrorHttp(400, 'La orden está anulada: no se le puede marcar etapas');
+  }
 
   const esTextil = info.tipo_codigo === 'TEXTIL';
 
@@ -1396,11 +1413,15 @@ export async function avanzarEtapa(lineaId: number, usuarioId: number, datos: Da
 /** El diseñador toma la orden: queda ligado a ella de aquí en adelante. */
 export async function tomarLinea(lineaId: number, disenadorId: number) {
   const [filas] = await pool.query(
-    `SELECT disenador_id, finalizada FROM orden_lineas WHERE id = ?`,
+    `SELECT ol.disenador_id, ol.finalizada, o.estado AS estado_orden
+       FROM orden_lineas ol
+       JOIN ordenes o ON o.id = ol.orden_id
+      WHERE ol.id = ?`,
     [lineaId]
   );
   const linea = (filas as any[])[0];
   if (!linea) throw new ErrorHttp(404, 'Línea de orden no encontrada');
+  if (linea.estado_orden === 'ANULADA') throw new ErrorHttp(400, 'La orden está anulada');
   if (linea.finalizada) throw new ErrorHttp(400, 'El trabajo ya está finalizado');
   if (linea.disenador_id) throw new ErrorHttp(409, 'Otro diseñador ya tomó este trabajo');
 
@@ -1483,4 +1504,72 @@ export async function cambiarCosturera(
     [lineaId]
   );
   return (resultado as any[])[0];
+}
+
+// ------------------------------------------------- Anular una orden
+
+/**
+ * Anular es borrar sin perder nada: la orden sale del tablero y ya no se
+ * le puede tocar, pero queda guardada con todo su historial por si hay
+ * que consultarla o volver a abrirla.
+ */
+export async function anular(id: number, motivo: string, usuarioId: number) {
+  const [filas] = await pool.query(
+    `SELECT id, numero_orden, estado FROM ordenes WHERE id = ?`,
+    [id]
+  );
+  const orden = (filas as any[])[0];
+  if (!orden) throw new ErrorHttp(404, 'Orden no encontrada');
+  if (orden.estado === 'ANULADA') throw new ErrorHttp(400, 'La orden ya está anulada');
+
+  await pool.query(`UPDATE ordenes SET estado = 'ANULADA' WHERE id = ?`, [id]);
+  await pool.query(
+    `INSERT INTO auditoria (tabla, registro_id, accion, usuario_id, datos_antes, datos_despues)
+     VALUES ('ordenes', ?, 'UPDATE', ?, JSON_OBJECT('estado', ?), ?)`,
+    [
+      id,
+      usuarioId,
+      orden.estado,
+      JSON.stringify({
+        edicion: 'anulacion',
+        estado: 'ANULADA',
+        cambios: [`Orden anulada · ${motivo.trim()}`],
+      }),
+    ]
+  );
+  return obtener(id);
+}
+
+/** Por si se anuló por equivocación: vuelve como estaba. */
+export async function reactivar(id: number, usuarioId: number) {
+  const [filas] = await pool.query(
+    `SELECT o.id, o.estado,
+            (SELECT COUNT(*) FROM orden_lineas ol
+              WHERE ol.orden_id = o.id AND ol.entregada = 1) AS entregadas,
+            (SELECT COUNT(*) FROM orden_lineas ol WHERE ol.orden_id = o.id) AS lineas
+       FROM ordenes o WHERE o.id = ?`,
+    [id]
+  );
+  const orden = (filas as any[])[0];
+  if (!orden) throw new ErrorHttp(404, 'Orden no encontrada');
+  if (orden.estado !== 'ANULADA') throw new ErrorHttp(400, 'La orden no está anulada');
+
+  // Vuelve al estado que le corresponde segun sus trabajos.
+  const estado =
+    orden.lineas > 0 && orden.entregadas === orden.lineas ? 'ENTREGADA' : 'ABIERTA';
+  await pool.query(`UPDATE ordenes SET estado = ? WHERE id = ?`, [estado, id]);
+  await pool.query(
+    `INSERT INTO auditoria (tabla, registro_id, accion, usuario_id, datos_antes, datos_despues)
+     VALUES ('ordenes', ?, 'UPDATE', ?, JSON_OBJECT('estado', 'ANULADA'), ?)`,
+    [
+      id,
+      usuarioId,
+      JSON.stringify({
+        edicion: 'anulacion',
+        estado,
+        cambios: ['Se deshizo la anulación: la orden vuelve a estar activa'],
+      }),
+    ]
+  );
+  return obtener(id);
 }
