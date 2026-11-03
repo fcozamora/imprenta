@@ -525,15 +525,9 @@ export default function LineaTrabajo({
                 </div>
 
                 {linea.suelto ? (
-                  <div>
-                    <label className="etiqueta">Presentación</label>
-                    <div className="campo bg-slate-100 text-slate-600">
-                      Suelto, sin block
-                    </div>
-                    <p className="mt-1 text-xs text-slate-500">
-                      Se piden {Number(linea.cantidadBlocks) || 0} artículos, no blocks.
-                    </p>
-                  </div>
+                  // Va suelto: no hay nada que pedir aquí, la cantidad ya se
+                  // anotó arriba y es la del artículo.
+                  <div className="hidden sm:block" />
                 ) : (
                   <div>
                     <label className="etiqueta">Blocks de (hojas) <span className="text-red-500">*</span></label>
