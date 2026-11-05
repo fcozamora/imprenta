@@ -557,9 +557,15 @@ export async function obtener(id: number) {
 
   // Detalle específico y flujo de etapas de cada línea
   for (const linea of lineas as any[]) {
-    linea.flujo = await flujoDeLinea(linea.tipo_trabajo_id, !!linea.archivo_sin_cambios);
-    linea.historial = await historialEtapas(linea.id);
     linea.detalle = await detalleDeLinea(linea.id, linea.tipo_codigo);
+    const sinNumerar =
+      linea.tipo_codigo === 'TALONARIOS' && linea.detalle?.numeracion_inicial == null;
+    linea.flujo = await flujoDeLinea(
+      linea.tipo_trabajo_id,
+      !!linea.archivo_sin_cambios,
+      sinNumerar
+    );
+    linea.historial = await historialEtapas(linea.id);
   }
 
   const [pago, abonos] = await Promise.all([pagos.resumen(id), pagos.listar(id)]);
@@ -567,15 +573,17 @@ export async function obtener(id: number) {
   return { ...orden, lineas, pago, abonos };
 }
 
-async function flujoDeLinea(tipoTrabajoId: number, sinCambios: boolean) {
+async function flujoDeLinea(tipoTrabajoId: number, sinCambios: boolean, sinNumerar = false) {
   const [filas] = await pool.query(
     `SELECT f.secuencia, e.id, e.codigo, e.nombre, e.icono, e.color
        FROM flujo_etapas f
        JOIN etapas e ON e.id = f.etapa_id
       WHERE f.tipo_trabajo_id = ?
         AND NOT (? = 1 AND f.omitir_sin_cambios = 1)
+        -- Si el talonario no lleva numeración, esa etapa no existe para él.
+        AND NOT (? = 1 AND e.codigo = 'NUMERACION')
       ORDER BY f.secuencia`,
-    [tipoTrabajoId, sinCambios ? 1 : 0]
+    [tipoTrabajoId, sinCambios ? 1 : 0, sinNumerar ? 1 : 0]
   );
   return filas;
 }
@@ -1285,6 +1293,10 @@ export async function avanzarEtapa(lineaId: number, usuarioId: number, datos: Da
               WHERE f.tipo_trabajo_id = ol.tipo_trabajo_id
                 AND f.secuencia > ol.secuencia_actual
                 AND NOT (ol.archivo_sin_cambios = 1 AND f.omitir_sin_cambios = 1)
+                -- Talonario sin numeración: se salta esa etapa.
+                AND NOT (dtal.linea_id IS NOT NULL
+                         AND dtal.numeracion_inicial IS NULL
+                         AND e.codigo = 'NUMERACION')
               ORDER BY f.secuencia LIMIT 1) AS siguiente_codigo,
             dt.costurera_id   AS costurera_actual,
             dt.sin_confeccion AS sin_confeccion_actual,
@@ -1293,6 +1305,7 @@ export async function avanzarEtapa(lineaId: number, usuarioId: number, datos: Da
        JOIN ordenes o ON o.id = ol.orden_id
        JOIN tipos_trabajo tt ON tt.id = ol.tipo_trabajo_id
        LEFT JOIN detalle_textil dt ON dt.linea_id = ol.id
+       LEFT JOIN detalle_talonario dtal ON dtal.linea_id = ol.id
       WHERE ol.id = ?`,
     [lineaId]
   );

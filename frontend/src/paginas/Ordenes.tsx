@@ -205,7 +205,7 @@ export default function Ordenes() {
               <tbody className="divide-y divide-slate-100">
                 {filas.map((f) => {
                   const flujo = flujoDesdeCatalogos(
-                    catalogos, f.tipo_trabajo_id, !!f.archivo_sin_cambios
+                    catalogos, f.tipo_trabajo_id, !!f.archivo_sin_cambios, !!f.sin_numerar
                   );
                   const aviso = avisoEntrega(f.dias_restantes);
                   const puedeAvanzar = puede('etapas.avanzar') && !f.finalizada;

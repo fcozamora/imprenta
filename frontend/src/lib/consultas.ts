@@ -83,13 +83,16 @@ export function useConfeccion(costureraId?: number) {
 export function flujoDesdeCatalogos(
   catalogos: Catalogos | undefined,
   tipoTrabajoId: number,
-  archivoSinCambios: boolean
+  archivoSinCambios: boolean,
+  /** Talonario sin numeración: esa etapa no se muestra ni se marca. */
+  sinNumerar = false
 ): EtapaFlujo[] {
   if (!catalogos) return [];
   const porId = new Map(catalogos.etapas.map((e) => [e.id, e]));
   return catalogos.flujos
     .filter((f) => f.tipo_trabajo_id === tipoTrabajoId)
     .filter((f) => !(archivoSinCambios && f.omitir_sin_cambios))
+    .filter((f) => !(sinNumerar && porId.get(f.etapa_id)?.codigo === 'NUMERACION'))
     .sort((a, b) => a.secuencia - b.secuencia)
     .map((f) => {
       const e = porId.get(f.etapa_id)!;

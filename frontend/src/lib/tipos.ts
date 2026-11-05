@@ -26,6 +26,8 @@ export interface FilaDashboard {
   nombre_trabajo: string;
   cantidad: number;
   archivo_sin_cambios: number;
+  /** Talonario sin numeración: esa etapa no va en la barra. */
+  sin_numerar: number;
   etapa: string | null;
   etapa_codigo: string | null;
   etapa_icono: string | null;
