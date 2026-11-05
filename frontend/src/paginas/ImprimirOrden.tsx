@@ -222,9 +222,12 @@ function DetalleLinea({ linea }: { linea: any }) {
         campos.push(['Tamaño', d.tamano ?? d.tamano_otro ?? '—', 2]);
         campos.push(['Copias', d.tipo_copia]);
         campos.push(['Tinta', d.tinta, 2]);
-        if (d.numeracion_inicial != null) {
-          campos.push(['Numeración', `${d.numeracion_inicial} al ${d.numeracion_final}`]);
-        }
+        campos.push([
+          'Numeración',
+          d.numeracion_inicial != null
+            ? `${d.numeracion_inicial} al ${d.numeracion_final}`
+            : 'Sin numerar',
+        ]);
         const acabados = [
           d.encolado && 'Encolado',
           d.perforado && 'Perforado',

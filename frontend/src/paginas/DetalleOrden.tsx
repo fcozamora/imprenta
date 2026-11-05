@@ -524,12 +524,14 @@ function Especificaciones({ linea }: { linea: any }) {
         filas.push(['Tamaño', d.tamano ?? d.tamano_otro ?? '—']);
         filas.push(['Copias', d.tipo_copia]);
         filas.push(['Tinta', d.tinta]);
-        if (d.numeracion_inicial != null) {
-          filas.push([
-            'Numeración',
-            `${numero(d.numeracion_inicial)} al ${numero(d.numeracion_final)}`,
-          ]);
-        }
+        // Decirlo es mejor que dejar el campo en blanco: el taller sabe
+        // que no es un olvido.
+        filas.push([
+          'Numeración',
+          d.numeracion_inicial != null
+            ? `${numero(d.numeracion_inicial)} al ${numero(d.numeracion_final)}`
+            : 'Sin numerar',
+        ]);
         const acabados = [
           d.encolado && 'Encolado',
           d.perforado && 'Perforado',

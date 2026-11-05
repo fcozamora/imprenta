@@ -190,7 +190,9 @@ export default function NuevaOrden() {
             perforado: l.perforado,
             grapado: l.grapado,
             carbon: l.carbon,
-            numeracionInicial: l.numeracionInicial === '' ? null : Number(l.numeracionInicial),
+            // Sin numerar: no viaja ninguna numeración.
+            numeracionInicial:
+              l.sinNumerar || l.numeracionInicial === '' ? null : Number(l.numeracionInicial),
             copias: l.papeles
               .map((papelId, i) => ({
                 posicion: i + 1,

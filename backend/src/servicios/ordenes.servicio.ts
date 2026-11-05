@@ -427,6 +427,10 @@ export async function plantilla(id: number, siguienteNumeracion = false) {
                 ? Number(t.numeracion_final) + 1
                 : ''
               : (t.numeracion_inicial ?? ''),
+            // Al editar, la casilla "Sin numerar" vuelve marcada si el
+            // trabajo no llevaba numeración. Al pedir de nuevo, no: esa
+            // orden arranca con la numeración que sigue.
+            sinNumerar: !siguienteNumeracion && t.numeracion_inicial === null,
             papeles,
           });
         }

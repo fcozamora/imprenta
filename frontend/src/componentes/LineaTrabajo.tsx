@@ -54,6 +54,8 @@ export interface DatosLinea {
   grapado: boolean;
   carbon: boolean;
   numeracionInicial: number | '';
+  /** El talonario no lleva numeración: no se pide ni se calcula. */
+  sinNumerar: boolean;
   papeles: number[];
   // Otras categorías
   tipoSobreId: number | '';
@@ -73,13 +75,14 @@ export function lineaVacia(): DatosLinea {
     observaciones: '', cantidadBlocks: '', hojasPorBlock: '', suelto: false,
     tamanoId: '', tamanoOtro: '',
     tipoCopiaId: '', tinta: '', encolado: false, perforado: false, grapado: false, carbon: false,
-    numeracionInicial: '', papeles: [], tipoSobreId: '', tamano: '', materialId: '',
+    numeracionInicial: '', sinNumerar: false, papeles: [], tipoSobreId: '', tamano: '', materialId: '',
     telaId: '', perfilImpresion: '', codigoSello: '', tintaId: '',
   };
 }
 
 /** NF = NI + (blocks x hojas) - 1 */
 export function numeracionFinal(l: DatosLinea): number | null {
+  if (l.sinNumerar) return null;
   const ni = Number(l.numeracionInicial);
   const blocks = Number(l.cantidadBlocks);
   const hojas = l.suelto ? 1 : Number(l.hojasPorBlock);
@@ -673,6 +676,26 @@ export default function LineaTrabajo({
                 </div>
               </div>
 
+              <label
+                className={`inline-flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2
+                            text-sm font-medium ring-1 transition-colors ${
+                              linea.sinNumerar
+                                ? 'bg-marca-50 text-marca-700 ring-marca-300'
+                                : 'bg-white text-slate-700 ring-slate-300 hover:bg-slate-50'
+                            }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={linea.sinNumerar}
+                  onChange={(e) =>
+                    onCambio({ sinNumerar: e.target.checked, numeracionInicial: '' })
+                  }
+                  className="h-4 w-4 rounded border-slate-300"
+                />
+                Sin numerar
+              </label>
+
+              {!linea.sinNumerar && (
               <div className="grid gap-3 sm:grid-cols-2">
                 <div>
                   <label className="etiqueta">Numeración inicial</label>
@@ -703,6 +726,7 @@ export default function LineaTrabajo({
                   )}
                 </div>
               </div>
+              )}
             </div>
           )}
 
